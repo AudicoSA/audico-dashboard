@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Link from 'next/link'
-import { LayoutGrid, ShoppingBag, Package, FileText, Settings, Link2, Bell, Search, PlusCircle, AlertOctagon, Bot } from 'lucide-react'
+import { LayoutGrid, ShoppingBag, Package, FileText, Settings, Link2, Bell, Search, PlusCircle, AlertOctagon, Bot, Users } from 'lucide-react'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -43,6 +43,7 @@ export default function RootLayout({
               <NavItem href="/alignment" icon={<Link2 size={22} />} label="Alignment" />
               <NavItem href="/products/duplicates" icon={<AlertOctagon size={22} />} label="Quality Control" />
               <NavItem href="/kait" icon={<Bot size={22} />} label="Kait's Desk" />
+              <NavItem href="/squad" icon={<Users size={22} />} label="Mission Control" />
               <NavItem href="/logs" icon={<FileText size={22} />} label="System Logs" />
             </nav>
 
