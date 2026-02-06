@@ -97,10 +97,10 @@ export default function MissionControl() {
     }
   }
 
-  // Filter tasks
+  // Filter tasks (handle both lowercase id and capitalized name)
   const filteredTasks = filterAgent === 'all' 
     ? tasks 
-    : tasks.filter(t => t.assigned_agent === filterAgent)
+    : tasks.filter(t => t.assigned_agent.toLowerCase() === filterAgent.toLowerCase())
 
   // Split into columns
   const newTasks = filteredTasks.filter(t => t.status === 'new')
@@ -461,11 +461,13 @@ function NewTaskModal({ agents, onClose, onSubmit }: {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
+    // Send capitalized name (e.g. 'Jarvis') not lowercase id (e.g. 'jarvis')
+    const agent = agents.find(a => a.id === assignedAgent)
     onSubmit({
       title,
       description,
       status: 'new',
-      assigned_agent: assignedAgent,
+      assigned_agent: agent?.name || assignedAgent,
       priority,
       mentions_kenny: mentionsKenny,
     })
