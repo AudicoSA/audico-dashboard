@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Link from 'next/link'
-import { LayoutGrid, ShoppingBag, Package, FileText, Settings, Link2, Bell, Search, PlusCircle, AlertOctagon, Bot, Users } from 'lucide-react'
+import { LayoutGrid, ShoppingBag, Package, FileText, Settings, Link2, Bell, Search, PlusCircle, AlertOctagon, Bot, Users, MessageCircle } from 'lucide-react'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -44,11 +44,12 @@ export default function RootLayout({
               <NavItem href="/products/duplicates" icon={<AlertOctagon size={22} />} label="Quality Control" />
               <NavItem href="/kait" icon={<Bot size={22} />} label="Kait's Desk" />
               <NavItem href="/squad" icon={<Users size={22} />} label="Mission Control" />
+              <NavItem href="/whatsapp" icon={<MessageCircle size={22} />} label="WhatsApp" />
               <NavItem href="/logs" icon={<FileText size={22} />} label="System Logs" />
-            </nav>
+            </nav >
 
             {/* Footer / User Profile */}
-            <div className="w-full px-4 mt-auto">
+            < div className="w-full px-4 mt-auto" >
               <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-center gap-3 cursor-pointer hover:bg-white/10 transition-colors">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-lime-400 to-emerald-500"></div>
                 <div className="hidden lg:block overflow-hidden">
@@ -56,13 +57,13 @@ export default function RootLayout({
                   <p className="text-xs text-gray-400 truncate">admin@audico.co.za</p>
                 </div>
               </div>
-            </div>
-          </aside>
+            </div >
+          </aside >
 
           {/* Main Content */}
-          <main className="flex-1 ml-20 lg:ml-64 p-8 overflow-x-hidden">
+          < main className="flex-1 ml-20 lg:ml-64 p-8 overflow-x-hidden" >
             {/* Top Header (Search & Notifications) */}
-            <header className="flex justify-between items-center mb-10">
+            < header className="flex justify-between items-center mb-10" >
               <h1 className="text-2xl font-bold text-white">Overview</h1>
 
               <div className="flex items-center gap-4">
@@ -79,13 +80,13 @@ export default function RootLayout({
                   <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-lime-500"></span>
                 </button>
               </div>
-            </header>
+            </header >
 
             {children}
-          </main>
-        </div>
-      </body>
-    </html>
+          </main >
+        </div >
+      </body >
+    </html >
   )
 }
 
