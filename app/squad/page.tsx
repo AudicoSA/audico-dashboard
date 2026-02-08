@@ -113,11 +113,11 @@ export default function MissionControl() {
         supabase.from('squad_agents').select('*')
       ])
 
-      if (tasksRes.data && tasksRes.data.length > 0) {
+      if (tasksRes.data) {
         setTasks(tasksRes.data)
       }
-      
-      if (messagesRes.data && messagesRes.data.length > 0) {
+
+      if (messagesRes.data) {
         setActivity(messagesRes.data)
       }
 
