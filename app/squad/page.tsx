@@ -30,6 +30,7 @@ import {
   Settings
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import OrchestratorPanel from './components/OrchestratorPanel'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -67,15 +68,7 @@ interface ActivityItem {
   created_at: string
 }
 
-interface OrchestratorStatus {
-  tokenBudget: {
-    total: number
-    used: number
-    remaining: number
-    agentUsage: Record<string, number>
-  }
-  activeOperations: any[]
-}
+
 
 interface EmailClassification {
   id: string
@@ -161,7 +154,6 @@ export default function MissionControl() {
   const [activity, setActivity] = useState<ActivityItem[]>(MOCK_ACTIVITY)
   const [filterAgent, setFilterAgent] = useState<string>('all')
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
-  const [orchestratorStatus, setOrchestratorStatus] = useState<OrchestratorStatus | null>(null)
   const [emails, setEmails] = useState<EmailClassification[]>([])
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>([])
   const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([])
@@ -208,7 +200,7 @@ export default function MissionControl() {
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'squad_agents' },
         () => {
-          fetchOrchestratorStatus()
+          // OrchestratorPanel handles its own status updates
         }
       )
       .subscribe()
@@ -227,24 +219,13 @@ export default function MissionControl() {
         const data = await res.json()
         if (data.tasks?.length) setTasks(data.tasks)
         if (data.activity?.length) setActivity(data.activity)
-        if (data.orchestrator) setOrchestratorStatus(data.orchestrator)
       }
     } catch (err) {
       console.log('Using mock data - API not connected yet')
     }
   }
 
-  const fetchOrchestratorStatus = async () => {
-    try {
-      const res = await fetch('/api/squad?action=orchestrator-status')
-      if (res.ok) {
-        const data = await res.json()
-        setOrchestratorStatus(data)
-      }
-    } catch (err) {
-      console.log('Could not fetch orchestrator status')
-    }
-  }
+
 
   const fetchEmails = async () => {
     try {
@@ -317,38 +298,7 @@ export default function MissionControl() {
     if (activeTab === 'ads') fetchAdCampaigns()
     if (activeTab === 'seo') fetchSeoAudits()
     if (activeTab === 'marketing') fetchResellerApps()
-    if (activeTab === 'orchestrator') fetchOrchestratorStatus()
   }, [activeTab])
-
-  const handleOrchestratorInit = async () => {
-    try {
-      const res = await fetch('/api/squad', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'orchestrator-init' })
-      })
-      if (res.ok) {
-        fetchOrchestratorStatus()
-      }
-    } catch (err) {
-      console.log('Failed to initialize orchestrator')
-    }
-  }
-
-  const handleOrchestratorShutdown = async () => {
-    try {
-      const res = await fetch('/api/squad', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'orchestrator-shutdown' })
-      })
-      if (res.ok) {
-        fetchOrchestratorStatus()
-      }
-    } catch (err) {
-      console.log('Failed to shutdown orchestrator')
-    }
-  }
 
   // Filter tasks
   const filteredTasks = filterAgent === 'all' 
@@ -520,11 +470,14 @@ export default function MissionControl() {
         )}
 
         {activeTab === 'orchestrator' && (
-          <OrchestratorTab
-            status={orchestratorStatus}
-            onInit={handleOrchestratorInit}
-            onShutdown={handleOrchestratorShutdown}
-          />
+          <motion.div
+            key="orchestrator"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <OrchestratorPanel />
+          </motion.div>
         )}
 
         {activeTab === 'email' && (
@@ -686,104 +639,7 @@ function OverviewTab({ newTasks, inProgressTasks, completedTasks, activity, move
   )
 }
 
-// Orchestrator Control Tab
-function OrchestratorTab({ status, onInit, onShutdown }: { 
-  status: OrchestratorStatus | null
-  onInit: () => void
-  onShutdown: () => void
-}) {
-  return (
-    <motion.div
-      key="orchestrator"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-    >
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Settings className="text-purple-400" />
-          Control Panel
-        </h3>
-        <div className="space-y-4">
-          <button
-            onClick={onInit}
-            className="w-full px-4 py-3 bg-lime-400 hover:bg-lime-500 text-black font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-          >
-            <Play size={18} />
-            Start Orchestrator
-          </button>
-          <button
-            onClick={onShutdown}
-            className="w-full px-4 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border border-red-500/30"
-          >
-            <Square size={18} />
-            Stop Orchestrator
-          </button>
-        </div>
-      </div>
 
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Activity className="text-lime-400" />
-          Token Budget
-        </h3>
-        {status ? (
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-400">Used</span>
-                <span className="text-white font-medium">
-                  {status.tokenBudget.used.toLocaleString()} / {status.tokenBudget.total.toLocaleString()}
-                </span>
-              </div>
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-lime-400 to-green-500"
-                  style={{ width: `${(status.tokenBudget.used / status.tokenBudget.total) * 100}%` }}
-                />
-              </div>
-            </div>
-            <div className="pt-4 border-t border-white/5">
-              <h4 className="text-sm font-medium text-gray-400 mb-3">Agent Usage</h4>
-              <div className="space-y-2">
-                {Object.entries(status.tokenBudget.agentUsage).map(([agent, usage]) => (
-                  <div key={agent} className="flex justify-between text-sm">
-                    <span className="text-gray-300">{agent}</span>
-                    <span className="text-white font-mono">{usage.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <p className="text-gray-400 text-sm">No data available</p>
-        )}
-      </div>
-
-      <div className="lg:col-span-2 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Calendar className="text-blue-400" />
-          Active Operations
-        </h3>
-        {status && status.activeOperations.length > 0 ? (
-          <div className="space-y-2">
-            {status.activeOperations.map((op, idx) => (
-              <div key={idx} className="bg-[#252525] border border-white/5 rounded-xl p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-white">{op.action}</span>
-                  <span className="text-xs text-gray-400">{op.agents.join(', ')}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-400 text-sm">No active operations</p>
-        )}
-      </div>
-    </motion.div>
-  )
-}
 
 // Email Agent Tab
 function EmailAgentTab({ emails, formatTimeAgo }: { emails: EmailClassification[], formatTimeAgo: (date: string) => string }) {
