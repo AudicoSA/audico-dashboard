@@ -2,9 +2,29 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Mail, Package, TrendingUp, Activity, CheckCircle2, Clock, AlertCircle, ArrowUpRight, Plus, CreditCard } from 'lucide-react'
+import { Mail, Package, TrendingUp, Activity, CheckCircle2, Clock, AlertCircle, ArrowUpRight, Plus, CreditCard, Users, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import ChatWidget from './components/ChatWidget'
+
+interface AgentStatus {
+  name: string
+  status: 'active' | 'idle' | 'offline'
+  role: string
+}
+
+interface UrgentTask {
+  id: string
+  title: string
+  priority: string
+  assigned_agent: string
+}
+
+interface TokenBudget {
+  total: number
+  used: number
+  remaining: number
+  usagePercent: number
+}
 
 export default function Home() {
   const [metrics, setMetrics] = useState({
@@ -13,6 +33,15 @@ export default function Home() {
     pendingApprovals: 0,
     aiUptime: 99.9
   })
+
+  const [agentStats, setAgentStats] = useState({
+    active: 0,
+    idle: 0,
+    total: 0
+  })
+
+  const [urgentTasks, setUrgentTasks] = useState<UrgentTask[]>([])
+  const [tokenBudget, setTokenBudget] = useState<TokenBudget | null>(null)
 
   useEffect(() => {
     // Animate counters
@@ -24,8 +53,78 @@ export default function Home() {
         aiUptime: 99.9
       })
     }, 100)
-    return () => clearTimeout(timer)
+
+    // Fetch agent status and urgent tasks
+    fetchMissionControlData()
+    const interval = setInterval(fetchMissionControlData, 10000) // Update every 10s
+
+    return () => {
+      clearTimeout(timer)
+      clearInterval(interval)
+    }
   }, [])
+
+  const fetchMissionControlData = async () => {
+    try {
+      // Fetch agent statistics and tasks
+      const squadRes = await fetch('/api/squad')
+      if (squadRes.ok) {
+        const data = await squadRes.json()
+        
+        // Calculate agent stats
+        if (data.agents && data.agents.length > 0) {
+          const activeCount = data.agents.filter((a: AgentStatus) => a.status === 'active').length
+          const idleCount = data.agents.filter((a: AgentStatus) => a.status === 'idle').length
+          setAgentStats({
+            active: activeCount,
+            idle: idleCount,
+            total: data.agents.length
+          })
+        }
+
+        // Get urgent tasks that mention Kenny
+        if (data.tasks && data.tasks.length > 0) {
+          const urgent = data.tasks
+            .filter((t: UrgentTask) => t.priority === 'urgent' || (t as any).mentions_kenny)
+            .slice(0, 3) // Top 3 urgent items
+          setUrgentTasks(urgent)
+        }
+
+        // Get orchestrator health for token budget
+        if (data.orchestratorHealth?.tokenBudget) {
+          setTokenBudget(data.orchestratorHealth.tokenBudget)
+        }
+      }
+
+      // Also try to fetch orchestrator status directly
+      const orchRes = await fetch('/api/squad?action=orchestrator-status')
+      if (orchRes.ok) {
+        const orchData = await orchRes.json()
+        if (orchData.tokenBudget) {
+          const used = orchData.tokenBudget.used
+          const total = orchData.tokenBudget.total
+          const remaining = orchData.tokenBudget.remaining
+          const usagePercent = (used / total) * 100
+
+          setTokenBudget({
+            total,
+            used,
+            remaining,
+            usagePercent
+          })
+        }
+      }
+    } catch (err) {
+      console.log('Mission Control data not available:', err)
+    }
+  }
+
+  const getUsageColor = (percent: number) => {
+    if (percent >= 90) return 'from-red-500 to-red-600'
+    if (percent >= 75) return 'from-orange-500 to-orange-600'
+    if (percent >= 50) return 'from-yellow-500 to-yellow-600'
+    return 'from-lime-400 to-green-500'
+  }
 
   return (
     <div className="space-y-8">
@@ -77,6 +176,131 @@ export default function Home() {
               accent
             />
           </div>
+
+          {/* Mission Control CTA Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Link 
+              href="/squad" 
+              className="group relative block bg-gradient-to-br from-purple-500/10 via-lime-400/10 to-blue-500/10 border border-lime-500/30 rounded-2xl p-6 hover:border-lime-400 transition-all overflow-hidden"
+            >
+              {/* Glow effect */}
+              <div className="absolute inset-0 bg-gradient-to-br from-lime-400/0 via-lime-400/5 to-lime-400/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              
+              <div className="relative">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-lime-400 flex items-center justify-center shadow-[0_0_20px_rgba(163,230,53,0.3)]">
+                      <Users size={24} className="text-black" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        Mission Control
+                        <ArrowUpRight size={18} className="text-lime-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                      </h3>
+                      <p className="text-sm text-gray-400">Manage your AI agent squad</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Agent Status Preview */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="bg-[#1c1c1c]/50 backdrop-blur-sm border border-white/5 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full bg-lime-400 animate-pulse" />
+                      <div>
+                        <p className="text-2xl font-bold text-white">{agentStats.active}</p>
+                        <p className="text-xs text-gray-400">Active Agents</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-[#1c1c1c]/50 backdrop-blur-sm border border-white/5 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full bg-gray-500" />
+                      <div>
+                        <p className="text-2xl font-bold text-white">{agentStats.idle}</p>
+                        <p className="text-xs text-gray-400">Idle Agents</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#1c1c1c]/50 backdrop-blur-sm border border-white/5 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <Activity size={20} className="text-purple-400" />
+                      <div>
+                        <p className="text-2xl font-bold text-white">{agentStats.total}</p>
+                        <p className="text-xs text-gray-400">Total Agents</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Token Budget Gauge */}
+                {tokenBudget && (
+                  <div className="bg-[#1c1c1c]/50 backdrop-blur-sm border border-white/5 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-gray-400">Token Budget</span>
+                      <span className="text-sm text-white font-medium">
+                        {tokenBudget.used.toLocaleString()} / {tokenBudget.total.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${tokenBudget.usagePercent}%` }}
+                        transition={{ duration: 0.5 }}
+                        className={`h-full bg-gradient-to-r ${getUsageColor(tokenBudget.usagePercent)}`}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-xs text-gray-400">
+                        {tokenBudget.usagePercent.toFixed(1)}% used
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {tokenBudget.remaining.toLocaleString()} remaining
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Urgent Items */}
+                {urgentTasks.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <div className="flex items-center gap-2 mb-3">
+                      <AlertCircle className="text-red-400 animate-pulse" size={16} />
+                      <h4 className="text-sm font-semibold text-red-400">
+                        {urgentTasks.length} Urgent Item{urgentTasks.length !== 1 ? 's' : ''} Need Your Attention
+                      </h4>
+                    </div>
+                    <div className="space-y-2">
+                      {urgentTasks.map((task) => (
+                        <div 
+                          key={task.id}
+                          className="flex items-center gap-2 text-sm text-white bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+                        >
+                          <Zap size={14} className="text-red-400 shrink-0" />
+                          <span className="flex-1 truncate">{task.title}</span>
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {task.assigned_agent}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex items-center justify-center">
+                  <div className="px-4 py-2 bg-lime-400/20 text-lime-400 text-sm font-semibold rounded-xl border border-lime-400/30 group-hover:bg-lime-400 group-hover:text-black transition-all">
+                    Open Mission Control →
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </motion.div>
 
           {/* Activity Graph Replaced by Ask Kait Chat */}
           <ChatWidget />
