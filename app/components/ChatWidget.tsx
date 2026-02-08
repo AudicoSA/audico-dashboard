@@ -52,10 +52,20 @@ export default function ChatWidget() {
             // Use environment variable for API URL, fallback to localhost for dev
             const apiUrl = process.env.NEXT_PUBLIC_CHAT_API_URL || 'http://localhost:8000/chat/'
 
+            // Get or create Session ID
+            let sessionId = localStorage.getItem('audico_chat_session_v2')
+            if (!sessionId) {
+                sessionId = crypto.randomUUID()
+                localStorage.setItem('audico_chat_session_v2', sessionId)
+            }
+
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userMsg.content }),
+                body: JSON.stringify({
+                    message: userMsg.content,
+                    conversation_id: sessionId
+                }),
             })
 
             if (!response.ok) {
