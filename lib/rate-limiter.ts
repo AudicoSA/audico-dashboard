@@ -1,11 +1,18 @@
 import Redis from 'ioredis'
 
-// Initialize Redis client
-const redis = new Redis(process.env.REDIS_URL || '', {
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: false,
-  lazyConnect: true,
-})
+// Initialize Redis client lazily to avoid build-time connection issues
+let redisClient: Redis | null = null
+
+function getRedis(): Redis {
+  if (!redisClient) {
+    redisClient = new Redis(process.env.REDIS_URL || '', {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    })
+  }
+  return redisClient
+}
 
 export interface RateLimitConfig {
   agentName: string
@@ -27,16 +34,16 @@ export async function checkRateLimit(
   const windowStart = now - config.windowSeconds * 1000
 
   try {
-    const currentCountStr = await redis.get(key)
+    const currentCountStr = await getRedis().get(key)
     const currentCount = currentCountStr ? parseInt(currentCountStr, 10) : 0
-    const lastResetStr = await redis.get(`${key}:reset`)
+    const lastResetStr = await getRedis().get(`${key}:reset`)
     const lastReset = lastResetStr ? parseInt(lastResetStr, 10) : now
 
     if (lastReset < windowStart) {
-      await redis.set(key, '1')
-      await redis.set(`${key}:reset`, now.toString())
-      await redis.expire(key, config.windowSeconds)
-      await redis.expire(`${key}:reset`, config.windowSeconds)
+      await getRedis().set(key, '1')
+      await getRedis().set(`${key}:reset`, now.toString())
+      await getRedis().expire(key, config.windowSeconds)
+      await getRedis().expire(`${key}:reset`, config.windowSeconds)
 
       return {
         allowed: true,
@@ -53,7 +60,7 @@ export async function checkRateLimit(
       }
     }
 
-    await redis.incr(key)
+    await getRedis().incr(key)
 
     return {
       allowed: true,
@@ -76,7 +83,7 @@ export async function getAgentExecutionCount(
 ): Promise<number> {
   const key = `rate-limit:${agentName}`
   try {
-    const countStr = await redis.get(key)
+    const countStr = await getRedis().get(key)
     return countStr ? parseInt(countStr, 10) : 0
   } catch (error) {
     console.error('Failed to get execution count:', error)
@@ -87,8 +94,8 @@ export async function getAgentExecutionCount(
 export async function resetRateLimit(agentName: string): Promise<void> {
   const key = `rate-limit:${agentName}`
   try {
-    await redis.del(key)
-    await redis.del(`${key}:reset`)
+    await getRedis().del(key)
+    await getRedis().del(`${key}:reset`)
   } catch (error) {
     console.error('Failed to reset rate limit:', error)
   }
@@ -100,12 +107,12 @@ export async function logAgentExecution(
 ): Promise<void> {
   const key = `agent-log:${agentName}:${Date.now()}`
   try {
-    await redis.set(key, JSON.stringify({
+    await getRedis().set(key, JSON.stringify({
       timestamp: Date.now(),
       agent: agentName,
       ...metadata,
     }))
-    await redis.expire(key, 86400)
+    await getRedis().expire(key, 86400)
   } catch (error) {
     console.error('Failed to log agent execution:', error)
   }
