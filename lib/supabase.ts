@@ -227,3 +227,47 @@ export type CustomerInteraction = {
   created_at: string
   updated_at: string
 }
+
+export type AgentConfig = {
+  id: string
+  name: string
+  enabled: boolean
+  schedule: {
+    enabled: boolean
+    intervals: string[]
+    timezone: string
+  }
+  token_budget: {
+    daily_limit: number
+    per_request_max: number
+    current_usage: number
+  }
+  behavior_settings: {
+    auto_approve: boolean
+    require_review: boolean
+    max_retries: number
+    timeout_seconds: number
+  }
+  created_at: string
+  updated_at: string
+}
+
+export type APICredential = {
+  id: string
+  service: string
+  key_name: string
+  key_value: string
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type NotificationPreference = {
+  id: string
+  event_type: string
+  enabled: boolean
+  channels: string[]
+  kenny_mentions_only: boolean
+  created_at: string
+  updated_at: string
+}

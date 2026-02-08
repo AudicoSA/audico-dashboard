@@ -45,6 +45,7 @@ export default function RootLayout({
               <NavItem href="/kait" icon={<Bot size={22} />} label="Kait's Desk" />
               <NavItem href="/squad" icon={<Users size={22} />} label="Mission Control" />
               <NavItem href="/logs" icon={<FileText size={22} />} label="System Logs" />
+              <NavItem href="/settings/agents" icon={<Settings size={22} />} label="Agent Settings" />
             </nav>
 
             {/* Footer / User Profile */}
