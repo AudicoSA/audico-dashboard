@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import OrchestratorPanel from './components/OrchestratorPanel'
+import EmailAgentPanel from './components/EmailAgentPanel'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -69,18 +70,6 @@ interface ActivityItem {
 }
 
 
-
-interface EmailClassification {
-  id: string
-  email_id: string
-  sender: string
-  subject: string
-  classification: string
-  priority: string
-  status: string
-  created_at: string
-  updated_at: string
-}
 
 interface SocialPost {
   id: string
@@ -154,7 +143,6 @@ export default function MissionControl() {
   const [activity, setActivity] = useState<ActivityItem[]>(MOCK_ACTIVITY)
   const [filterAgent, setFilterAgent] = useState<string>('all')
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
-  const [emails, setEmails] = useState<EmailClassification[]>([])
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>([])
   const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([])
   const [seoAudits, setSeoAudits] = useState<SeoAudit[]>([])
@@ -225,21 +213,6 @@ export default function MissionControl() {
     }
   }
 
-
-
-  const fetchEmails = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('email_classifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50)
-      if (data) setEmails(data)
-    } catch (err) {
-      console.log('Could not fetch emails')
-    }
-  }
-
   const fetchSocialPosts = async () => {
     try {
       const { data, error } = await supabase
@@ -293,7 +266,6 @@ export default function MissionControl() {
   }
 
   useEffect(() => {
-    if (activeTab === 'email') fetchEmails()
     if (activeTab === 'social') fetchSocialPosts()
     if (activeTab === 'ads') fetchAdCampaigns()
     if (activeTab === 'seo') fetchSeoAudits()
@@ -481,7 +453,14 @@ export default function MissionControl() {
         )}
 
         {activeTab === 'email' && (
-          <EmailAgentTab emails={emails} formatTimeAgo={formatTimeAgo} />
+          <motion.div
+            key="email"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <EmailAgentPanel />
+          </motion.div>
         )}
 
         {activeTab === 'social' && (
@@ -633,76 +612,6 @@ function OverviewTab({ newTasks, inProgressTasks, completedTasks, activity, move
               </div>
             )
           })}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-
-
-// Email Agent Tab
-function EmailAgentTab({ emails, formatTimeAgo }: { emails: EmailClassification[], formatTimeAgo: (date: string) => string }) {
-  return (
-    <motion.div
-      key="email"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-    >
-      <div className="lg:col-span-2 space-y-4">
-        <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Mail className="text-blue-400" />
-            Email Inbox
-          </h3>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {emails.length > 0 ? emails.map((email) => (
-              <div key={email.id} className="bg-[#252525] border border-white/5 rounded-xl p-4 hover:border-lime-500/30 transition-all">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-white">{email.subject}</p>
-                    <p className="text-xs text-gray-400 mt-1">{email.sender}</p>
-                  </div>
-                  <span className={`text-[10px] px-2 py-1 rounded-md border ${
-                    email.priority === 'urgent' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                    email.priority === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
-                    'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                  }`}>
-                    {email.priority}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">{email.classification}</span>
-                  <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">{email.status}</span>
-                  <span>{formatTimeAgo(email.created_at)}</span>
-                </div>
-              </div>
-            )) : (
-              <p className="text-gray-400 text-sm text-center py-8">No emails classified yet</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-400">Unread</span>
-              <span className="text-xl font-bold text-lime-400">{emails.filter(e => e.status === 'unread').length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-400">Replied</span>
-              <span className="text-xl font-bold text-blue-400">{emails.filter(e => e.status === 'replied').length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-400">Total</span>
-              <span className="text-xl font-bold text-white">{emails.length}</span>
-            </div>
-          </div>
         </div>
       </div>
     </motion.div>
