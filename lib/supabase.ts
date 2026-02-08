@@ -383,3 +383,63 @@ export type SquadAgent = {
   last_active: string
   created_at: string
 }
+
+export type NotebookLMConfig = {
+  id: string
+  google_cloud_project_id: string | null
+  service_account_json: any | null
+  python_path: string | null
+  notebooklm_py_installed: boolean
+  connection_tested: boolean
+  last_test_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type NotebookLMNotebook = {
+  id: string
+  name: string
+  notebook_id: string
+  purpose: string | null
+  google_cloud_project_id: string | null
+  sources: string[]
+  source_count: number
+  sources_count: number
+  status: 'active' | 'inactive' | 'archived' | 'error'
+  statistics: {
+    queries_count: number
+    artifacts_generated: number
+    last_activity: string | null
+  }
+  metadata: any
+  created_at: string
+  updated_at: string
+  last_updated: string
+}
+
+export type NotebookLMArtifact = {
+  id: string
+  notebook_id: string
+  artifact_type: 'infographic' | 'slide_deck' | 'video_overview' | 'mind_map'
+  storage_path: string | null
+  thumbnail_url: string | null
+  generation_prompt: string | null
+  status: 'pending' | 'generating' | 'completed' | 'failed' | 'archived'
+  linked_social_post_id: string | null
+  linked_newsletter_id: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type NotebookLMUsage = {
+  id: string
+  api_calls_count: number
+  storage_used_mb: number
+  artifact_history: {
+    date: string
+    count: number
+  }[]
+  created_at: string
+  updated_at: string
+}
