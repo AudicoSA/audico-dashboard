@@ -35,6 +35,15 @@ async function logToSquadMessages(fromAgent: string, message: string, data: any 
     })
 }
 
+export async function GET() {
+  return NextResponse.json({
+    status: 'email-poll-route-active',
+    message: 'Use POST with Authorization: Bearer CRON_SECRET',
+    method: 'This route only accepts POST requests from Vercel Cron',
+    timestamp: new Date().toISOString()
+  })
+}
+
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
