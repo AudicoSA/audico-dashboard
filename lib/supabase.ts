@@ -75,3 +75,112 @@ export type AgentLog = {
   event_type: string
   context: any
 }
+
+export type EmailClassification = {
+  id: string
+  email_id: string
+  sender: string
+  subject: string
+  body: string | null
+  classification: 'order' | 'support' | 'inquiry' | 'complaint' | 'spam' | 'other'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  assigned_agent: string | null
+  status: 'unread' | 'read' | 'replied' | 'archived'
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type SocialPost = {
+  id: string
+  platform: 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'tiktok' | 'youtube'
+  content: string
+  media_urls: string[]
+  status: 'draft' | 'scheduled' | 'published' | 'failed'
+  scheduled_for: string | null
+  published_at: string | null
+  post_url: string | null
+  engagement: {
+    likes: number
+    comments: number
+    shares: number
+  }
+  created_by: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type AdCampaign = {
+  id: string
+  name: string
+  platform: 'google_ads' | 'facebook_ads' | 'instagram_ads' | 'linkedin_ads' | 'tiktok_ads'
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'cancelled'
+  budget_total: number | null
+  budget_spent: number
+  currency: string
+  start_date: string | null
+  end_date: string | null
+  target_audience: any
+  ad_content: any
+  performance_metrics: {
+    impressions: number
+    clicks: number
+    conversions: number
+    ctr: number
+    cpc: number
+    roas: number
+  }
+  managed_by: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type SeoAudit = {
+  id: string
+  url: string
+  audit_type: 'full_site' | 'page' | 'technical' | 'content' | 'backlinks'
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  score: number | null
+  issues_found: any[]
+  recommendations: any[]
+  metrics: any
+  performed_by: string | null
+  completed_at: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type ResellerApplication = {
+  id: string
+  company_name: string
+  contact_name: string
+  contact_email: string
+  contact_phone: string | null
+  business_type: string | null
+  website: string | null
+  annual_revenue: string | null
+  target_market: string | null
+  experience_level: 'beginner' | 'intermediate' | 'advanced' | 'expert' | null
+  status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'on_hold'
+  reviewed_by: string | null
+  reviewed_at: string | null
+  approval_notes: string | null
+  business_details: any
+  documents: any[]
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type SquadMessage = {
+  id: string
+  from_agent: string
+  to_agent: string | null
+  message: string
+  task_id: string | null
+  data: any
+  created_at: string
+}
