@@ -1,4 +1,11 @@
-import { kv } from '@vercel/kv'
+import Redis from 'ioredis'
+
+// Initialize Redis client
+const redis = new Redis(process.env.REDIS_URL || '', {
+  maxRetriesPerRequest: 3,
+  enableReadyCheck: false,
+  lazyConnect: true,
+})
 
 export interface RateLimitConfig {
   agentName: string
@@ -20,14 +27,16 @@ export async function checkRateLimit(
   const windowStart = now - config.windowSeconds * 1000
 
   try {
-    const currentCount = await kv.get<number>(key) || 0
-    const lastReset = await kv.get<number>(`${key}:reset`) || now
+    const currentCountStr = await redis.get(key)
+    const currentCount = currentCountStr ? parseInt(currentCountStr, 10) : 0
+    const lastResetStr = await redis.get(`${key}:reset`)
+    const lastReset = lastResetStr ? parseInt(lastResetStr, 10) : now
 
     if (lastReset < windowStart) {
-      await kv.set(key, 1)
-      await kv.set(`${key}:reset`, now)
-      await kv.expire(key, config.windowSeconds)
-      await kv.expire(`${key}:reset`, config.windowSeconds)
+      await redis.set(key, '1')
+      await redis.set(`${key}:reset`, now.toString())
+      await redis.expire(key, config.windowSeconds)
+      await redis.expire(`${key}:reset`, config.windowSeconds)
 
       return {
         allowed: true,
@@ -44,7 +53,7 @@ export async function checkRateLimit(
       }
     }
 
-    await kv.incr(key)
+    await redis.incr(key)
 
     return {
       allowed: true,
@@ -67,7 +76,8 @@ export async function getAgentExecutionCount(
 ): Promise<number> {
   const key = `rate-limit:${agentName}`
   try {
-    return (await kv.get<number>(key)) || 0
+    const countStr = await redis.get(key)
+    return countStr ? parseInt(countStr, 10) : 0
   } catch (error) {
     console.error('Failed to get execution count:', error)
     return 0
@@ -77,8 +87,8 @@ export async function getAgentExecutionCount(
 export async function resetRateLimit(agentName: string): Promise<void> {
   const key = `rate-limit:${agentName}`
   try {
-    await kv.del(key)
-    await kv.del(`${key}:reset`)
+    await redis.del(key)
+    await redis.del(`${key}:reset`)
   } catch (error) {
     console.error('Failed to reset rate limit:', error)
   }
@@ -90,12 +100,12 @@ export async function logAgentExecution(
 ): Promise<void> {
   const key = `agent-log:${agentName}:${Date.now()}`
   try {
-    await kv.set(key, {
+    await redis.set(key, JSON.stringify({
       timestamp: Date.now(),
       agent: agentName,
       ...metadata,
-    })
-    await kv.expire(key, 86400)
+    }))
+    await redis.expire(key, 86400)
   } catch (error) {
     console.error('Failed to log agent execution:', error)
   }
