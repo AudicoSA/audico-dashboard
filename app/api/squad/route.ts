@@ -1,11 +1,49 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-// Initialize Supabase client for server-side operations
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
+
+interface AgentStatistics {
+  agentName: string
+  role: string
+  status: 'active' | 'idle' | 'offline'
+  last_active: string
+  pendingTasks: number
+  inProgressTasks: number
+  completedTasks: number
+  totalTasks: number
+  successRate: number
+  recentErrors: Array<{
+    message: string
+    timestamp: string
+    task_id?: string
+  }>
+  tokenUsage: number
+}
+
+interface OrchestratorHealth {
+  isRunning: boolean
+  uptime: string
+  tokenBudget: {
+    total: number
+    used: number
+    remaining: number
+    usagePercent: number
+  }
+  lastExecutionTimes: {
+    email_poll?: string
+    email_classify?: string
+    email_respond?: string
+    status_update?: string
+    conflict_check?: string
+    token_monitor?: string
+  }
+  activeOperationsCount: number
+  scheduledJobsCount: number
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,52 +69,192 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch tasks
-    const { data: tasks, error: tasksError } = await supabase
+    const dateFrom = searchParams.get('dateFrom')
+    const dateTo = searchParams.get('dateTo')
+    const agentType = searchParams.get('agentType')
+    const agentName = searchParams.get('agentName')
+
+    let tasksQuery = supabase
       .from('squad_tasks')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(100)
+
+    if (dateFrom) {
+      tasksQuery = tasksQuery.gte('created_at', dateFrom)
+    }
+    if (dateTo) {
+      tasksQuery = tasksQuery.lte('created_at', dateTo)
+    }
+    if (agentName) {
+      tasksQuery = tasksQuery.eq('assigned_agent', agentName)
+    }
+
+    tasksQuery = tasksQuery.limit(100)
+
+    const { data: tasks, error: tasksError } = await tasksQuery
 
     if (tasksError) {
       console.error('Error fetching tasks:', tasksError)
-      // Return empty array if table doesn't exist yet
       if (tasksError.code === '42P01') {
-        return NextResponse.json({ tasks: [], activity: [], message: 'Tables not created yet - run migration' })
+        return NextResponse.json({ 
+          tasks: [], 
+          activity: [], 
+          agents: [],
+          agentStatistics: [],
+          orchestratorHealth: null,
+          message: 'Tables not created yet - run migration' 
+        })
       }
     }
 
-    // Fetch recent activity (messages between agents)
-    const { data: activity, error: activityError } = await supabase
+    let messagesQuery = supabase
       .from('squad_messages')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50)
+
+    if (dateFrom) {
+      messagesQuery = messagesQuery.gte('created_at', dateFrom)
+    }
+    if (dateTo) {
+      messagesQuery = messagesQuery.lte('created_at', dateTo)
+    }
+
+    messagesQuery = messagesQuery.limit(50)
+
+    const { data: activity, error: activityError } = await messagesQuery
 
     if (activityError) {
       console.error('Error fetching activity:', activityError)
     }
 
-    // Fetch agent statuses
-    const { data: agents, error: agentsError } = await supabase
+    let agentsQuery = supabase
       .from('squad_agents')
       .select('*')
       .order('name')
 
-    let orchestratorData = null
+    if (agentType) {
+      agentsQuery = agentsQuery.eq('role', agentType)
+    }
+
+    const { data: agents, error: agentsError } = await agentsQuery
+
+    const agentStatistics: AgentStatistics[] = []
+    
+    if (agents && agents.length > 0) {
+      for (const agent of agents) {
+        const agentTasks = (tasks || []).filter(t => t.assigned_agent === agent.name)
+        
+        const pendingTasks = agentTasks.filter(t => t.status === 'new').length
+        const inProgressTasks = agentTasks.filter(t => t.status === 'in_progress').length
+        const completedTasks = agentTasks.filter(t => t.status === 'completed').length
+        const totalTasks = agentTasks.length
+        
+        const successRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0
+
+        const agentMessages = (activity || []).filter(
+          m => m.from_agent === agent.name && m.message.toLowerCase().includes('error')
+        ).slice(0, 5)
+        
+        const recentErrors = agentMessages.map(m => ({
+          message: m.message,
+          timestamp: m.created_at,
+          task_id: m.task_id
+        }))
+
+        let tokenUsage = 0
+        try {
+          const { orchestrator } = await import('@/services/orchestrator')
+          const tokenBudget = orchestrator.getTokenBudget()
+          tokenUsage = tokenBudget.agentUsage[agent.name] || 0
+        } catch (e) {
+        }
+
+        agentStatistics.push({
+          agentName: agent.name,
+          role: agent.role,
+          status: agent.status,
+          last_active: agent.last_active,
+          pendingTasks,
+          inProgressTasks,
+          completedTasks,
+          totalTasks,
+          successRate: Math.round(successRate * 100) / 100,
+          recentErrors,
+          tokenUsage
+        })
+      }
+    }
+
+    let orchestratorHealth: OrchestratorHealth | null = null
     try {
       const { orchestrator } = await import('@/services/orchestrator')
       const tokenBudget = orchestrator.getTokenBudget()
       const activeOps = orchestrator.getActiveOperations()
-      orchestratorData = { tokenBudget, activeOperations: activeOps }
+
+      const lastExecutionTimes: OrchestratorHealth['lastExecutionTimes'] = {}
+      
+      const scheduleMessages = (activity || []).filter(
+        m => m.from_agent === 'orchestrator' || m.from_agent === 'email_agent'
+      )
+
+      const scheduleTypes = ['email_poll', 'email_classify', 'email_respond', 'status_update', 'conflict_check', 'token_monitor']
+      for (const scheduleType of scheduleTypes) {
+        const lastExecution = scheduleMessages.find(m => 
+          m.message.toLowerCase().includes(scheduleType.replace('_', ' '))
+        )
+        if (lastExecution) {
+          lastExecutionTimes[scheduleType as keyof typeof lastExecutionTimes] = lastExecution.created_at
+        }
+      }
+
+      const startupMessage = (activity || []).find(
+        m => m.from_agent === 'orchestrator' && m.message.includes('starting up')
+      )
+      const uptime = startupMessage 
+        ? `Since ${new Date(startupMessage.created_at).toLocaleString()}`
+        : 'Unknown'
+
+      orchestratorHealth = {
+        isRunning: true,
+        uptime,
+        tokenBudget: {
+          total: tokenBudget.total,
+          used: tokenBudget.used,
+          remaining: tokenBudget.remaining,
+          usagePercent: Math.round((tokenBudget.used / tokenBudget.total) * 100 * 100) / 100
+        },
+        lastExecutionTimes,
+        activeOperationsCount: activeOps.length,
+        scheduledJobsCount: 6
+      }
     } catch (e) {
+      orchestratorHealth = {
+        isRunning: false,
+        uptime: 'Not running',
+        tokenBudget: {
+          total: 0,
+          used: 0,
+          remaining: 0,
+          usagePercent: 0
+        },
+        lastExecutionTimes: {},
+        activeOperationsCount: 0,
+        scheduledJobsCount: 0
+      }
     }
 
     return NextResponse.json({
       tasks: tasks || [],
       activity: activity || [],
       agents: agents || [],
-      orchestrator: orchestratorData
+      agentStatistics,
+      orchestratorHealth,
+      filters: {
+        dateFrom,
+        dateTo,
+        agentType,
+        agentName
+      }
     })
 
   } catch (error) {
@@ -149,7 +327,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Insert new task
     const { data: task, error } = await supabase
       .from('squad_tasks')
       .insert({
@@ -166,7 +343,6 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating task:', error)
-      // Return mock success if table doesn't exist yet
       if (error.code === '42P01') {
         return NextResponse.json({
           task: { id: 'mock-' + Date.now(), ...body },
@@ -179,7 +355,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Log the task creation as activity
     await supabase
       .from('squad_messages')
       .insert({
@@ -211,7 +386,6 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Update task
     const { data: task, error } = await supabase
       .from('squad_tasks')
       .update({
