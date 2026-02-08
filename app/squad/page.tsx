@@ -22,6 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import VisualContentPanel from './components/VisualContentPanel'
 
 const AGENTS = [
   { id: 'jarvis', name: 'Jarvis', role: 'Orchestrator', color: '#a855f7' },
@@ -822,6 +823,12 @@ function AgentDetailView({ agent, metrics, tasks, onMoveTask, onTriggerAgent, is
           ))}
         </KanbanColumn>
       </div>
+
+      {(agent.name === 'Naledi' || agent.name === 'Lerato') && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <VisualContentPanel agentName={agent.name as 'Naledi' | 'Lerato'} />
+        </div>
+      )}
     </div>
   )
 }
