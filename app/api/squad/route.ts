@@ -9,6 +9,28 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const action = searchParams.get('action')
+
+    if (action === 'orchestrator-status') {
+      try {
+        const { orchestrator } = await import('@/services/orchestrator')
+        const tokenBudget = orchestrator.getTokenBudget()
+        const activeOps = orchestrator.getActiveOperations()
+        
+        return NextResponse.json({
+          tokenBudget,
+          activeOperations: activeOps,
+          timestamp: new Date().toISOString()
+        })
+      } catch (error: any) {
+        return NextResponse.json(
+          { error: 'Orchestrator not initialized', details: error.message },
+          { status: 503 }
+        )
+      }
+    }
+
     // Fetch tasks
     const { data: tasks, error: tasksError } = await supabase
       .from('squad_tasks')
@@ -41,10 +63,20 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('name')
 
+    let orchestratorData = null
+    try {
+      const { orchestrator } = await import('@/services/orchestrator')
+      const tokenBudget = orchestrator.getTokenBudget()
+      const activeOps = orchestrator.getActiveOperations()
+      orchestratorData = { tokenBudget, activeOperations: activeOps }
+    } catch (e) {
+    }
+
     return NextResponse.json({
       tasks: tasks || [],
       activity: activity || [],
-      agents: agents || []
+      agents: agents || [],
+      orchestrator: orchestratorData
     })
 
   } catch (error) {
@@ -60,7 +92,55 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
-    const { title, description, status, assigned_agent, priority, mentions_kenny, deliverable_url } = body
+    const { action, title, description, status, assigned_agent, priority, mentions_kenny, deliverable_url } = body
+
+    if (action === 'orchestrator-init') {
+      try {
+        const { orchestrator } = await import('@/services/orchestrator')
+        await orchestrator.initialize()
+        return NextResponse.json({ success: true, message: 'Orchestrator initialized' })
+      } catch (error: any) {
+        return NextResponse.json(
+          { error: 'Failed to initialize orchestrator', details: error.message },
+          { status: 500 }
+        )
+      }
+    }
+
+    if (action === 'orchestrator-shutdown') {
+      try {
+        const { orchestrator } = await import('@/services/orchestrator')
+        await orchestrator.shutdown()
+        return NextResponse.json({ success: true, message: 'Orchestrator shutdown' })
+      } catch (error: any) {
+        return NextResponse.json(
+          { error: 'Failed to shutdown orchestrator', details: error.message },
+          { status: 500 }
+        )
+      }
+    }
+
+    if (action === 'orchestrator-message') {
+      try {
+        const { orchestrator } = await import('@/services/orchestrator')
+        const { fromAgent, toAgent, message, taskId, data } = body
+        
+        if (!fromAgent || !message) {
+          return NextResponse.json(
+            { error: 'fromAgent and message are required' },
+            { status: 400 }
+          )
+        }
+        
+        await orchestrator.sendMessage(fromAgent, toAgent || null, message, taskId, data)
+        return NextResponse.json({ success: true, message: 'Message sent' })
+      } catch (error: any) {
+        return NextResponse.json(
+          { error: 'Failed to send message', details: error.message },
+          { status: 500 }
+        )
+      }
+    }
 
     if (!title) {
       return NextResponse.json(
