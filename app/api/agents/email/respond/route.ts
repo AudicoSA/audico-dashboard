@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
+import { checkRateLimit, logAgentExecution, AGENT_RATE_LIMITS } from '@/lib/rate-limiter'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,7 +90,25 @@ function createEmailMessage(to: string, subject: string, body: string, inReplyTo
 }
 
 export async function POST(request: NextRequest) {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
+    const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.email_respond)
+    
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded',
+          remaining: rateLimit.remaining,
+          resetAt: new Date(rateLimit.resetAt).toISOString(),
+        },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { email_id, gmail_message_id, response_text } = body
 
@@ -172,6 +191,12 @@ export async function POST(request: NextRequest) {
       console.error('Failed to update email log:', updateError)
     }
 
+    await logAgentExecution('email_respond', {
+      email_id: emailLog.id,
+      draft_id: draftResponse.data.id,
+      status: 'completed',
+    })
+
     await logToSquadMessages(
       'email_agent',
       `Draft created for: ${emailLog.subject}`,
@@ -180,6 +205,7 @@ export async function POST(request: NextRequest) {
         email_id: emailLog.id,
         draft_id: draftResponse.data.id,
         to: emailLog.from_email,
+        remaining: rateLimit.remaining,
       }
     )
 
@@ -191,6 +217,7 @@ export async function POST(request: NextRequest) {
       },
       email: emailLog,
       response_preview: responseBody,
+      remaining: rateLimit.remaining,
     })
   } catch (error: any) {
     console.error('Email response error:', error)

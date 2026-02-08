@@ -7,7 +7,9 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check-supabase": "tsx scripts/check-supabase.ts",
+    "verify-deployment": "bash scripts/verify-deployment.sh"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +25,7 @@
     "@tailwindcss/postcss": "^4.1.17",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.6",
+    "@vercel/kv": "^3.0.0",
     "autoprefixer": "^10.4.22",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.24",
@@ -39,6 +42,7 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/node-cron": "^3.0.11"
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.2"
   }
 }

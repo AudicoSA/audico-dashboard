@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit, logAgentExecution, AGENT_RATE_LIMITS } from '@/lib/rate-limiter'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,7 +82,25 @@ function classifyEmail(from: string, subject: string, body: string): {
 }
 
 export async function POST(request: NextRequest) {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
+    const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.email_classify)
+    
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded',
+          remaining: rateLimit.remaining,
+          resetAt: new Date(rateLimit.resetAt).toISOString(),
+        },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { email_id, gmail_message_id } = body
 
@@ -160,6 +179,13 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
+    await logAgentExecution('email_classify', {
+      email_id: emailLog.id,
+      category,
+      priority,
+      status: 'completed',
+    })
+
     await logToSquadMessages(
       'email_agent',
       `Email classified as ${category} with ${priority} priority`,
@@ -169,6 +195,7 @@ export async function POST(request: NextRequest) {
         category,
         priority,
         classification_id: classification?.id,
+        remaining: rateLimit.remaining,
       }
     )
 
@@ -176,6 +203,7 @@ export async function POST(request: NextRequest) {
       success: true,
       email: updated,
       classification,
+      remaining: rateLimit.remaining,
     })
   } catch (error: any) {
     console.error('Email classification error:', error)
