@@ -35,6 +35,7 @@ import EmailAgentPanel from './components/EmailAgentPanel'
 import SocialAgentPanel from './components/SocialAgentPanel'
 import AdsAgentPanel from './components/AdsAgentPanel'
 import SeoAgentPanel from './components/SeoAgentPanel'
+import MarketingAgentPanel from './components/MarketingAgentPanel'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -118,15 +119,6 @@ interface SeoAudit {
   created_at: string
 }
 
-interface ResellerApplication {
-  id: string
-  company_name: string
-  contact_name: string
-  contact_email: string
-  status: string
-  created_at: string
-}
-
 type TabType = 'overview' | 'orchestrator' | 'email' | 'social' | 'ads' | 'seo' | 'marketing'
 
 // Mock data for initial display
@@ -149,7 +141,6 @@ export default function MissionControl() {
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>([])
   const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([])
   const [seoAudits, setSeoAudits] = useState<SeoAudit[]>([])
-  const [resellerApps, setResellerApps] = useState<ResellerApplication[]>([])
 
   // Fetch initial data
   useEffect(() => {
@@ -255,24 +246,10 @@ export default function MissionControl() {
     }
   }
 
-  const fetchResellerApps = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('reseller_applications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50)
-      if (data) setResellerApps(data)
-    } catch (err) {
-      console.log('Could not fetch reseller applications')
-    }
-  }
-
   useEffect(() => {
     if (activeTab === 'social') fetchSocialPosts()
     if (activeTab === 'ads') fetchAdCampaigns()
     if (activeTab === 'seo') fetchSeoAudits()
-    if (activeTab === 'marketing') fetchResellerApps()
   }, [activeTab])
 
   // Filter tasks
@@ -500,7 +477,14 @@ export default function MissionControl() {
         )}
 
         {activeTab === 'marketing' && (
-          <MarketingTab applications={resellerApps} formatTimeAgo={formatTimeAgo} />
+          <motion.div
+            key="marketing"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <MarketingAgentPanel />
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -694,52 +678,6 @@ function SocialMediaTab({ posts, formatTimeAgo }: { posts: SocialPost[], formatT
 
 
 
-
-
-// Marketing Tab
-function MarketingTab({ applications, formatTimeAgo }: { applications: ResellerApplication[], formatTimeAgo: (date: string) => string }) {
-  return (
-    <motion.div
-      key="marketing"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Megaphone className="text-pink-400" />
-          Reseller Applications
-        </h3>
-        <div className="space-y-3">
-          {applications.length > 0 ? applications.map((app) => (
-            <div key={app.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">{app.company_name}</p>
-                  <p className="text-xs text-gray-400 mt-1">{app.contact_name} • {app.contact_email}</p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-md border ${
-                  app.status === 'approved' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
-                  app.status === 'under_review' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                  app.status === 'rejected' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                  'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                }`}>
-                  {app.status}
-                </span>
-              </div>
-              <div className="text-xs text-gray-400 pt-2 border-t border-white/5">
-                {formatTimeAgo(app.created_at)}
-              </div>
-            </div>
-          )) : (
-            <p className="text-gray-400 text-sm text-center py-8">No applications submitted yet</p>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
 
 // Agent Avatar Component
 function AgentAvatar({ agent, size = 'md' }: { agent: typeof AGENTS[0], size?: 'sm' | 'md' }) {
