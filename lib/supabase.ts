@@ -383,3 +383,53 @@ export type SquadAgent = {
   last_active: string
   created_at: string
 }
+
+export type QuoteChatSession = {
+  id: string
+  session_id: string
+  customer_name: string | null
+  customer_email: string | null
+  customer_phone: string | null
+  company_name: string | null
+  status: 'active' | 'pending_quote' | 'quote_sent' | 'completed' | 'abandoned'
+  messages: any[]
+  quote_items: any[]
+  total_amount: number | null
+  currency: string
+  metadata: any
+  created_at: string
+  updated_at: string
+  last_activity_at: string
+}
+
+export type QuoteChatMessage = {
+  id: string
+  session_id: string
+  sender_type: 'customer' | 'agent' | 'system'
+  sender_name: string | null
+  message: string
+  attachments: string[]
+  metadata: any
+  created_at: string
+}
+
+export type QuoteRequest = {
+  id: string
+  session_id: string | null
+  email_id: string | null
+  customer_name: string
+  customer_email: string
+  customer_phone: string | null
+  company_name: string | null
+  items: any[]
+  notes: string | null
+  status: 'pending' | 'processing' | 'sent' | 'accepted' | 'rejected'
+  quote_number: string | null
+  quote_amount: number | null
+  quote_pdf_url: string | null
+  valid_until: string | null
+  generated_by: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
