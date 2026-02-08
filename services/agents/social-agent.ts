@@ -2,10 +2,15 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { ProductCatalogItem } from './types'
 import { HOME_AUTOMATION_KEYWORDS, getPlatformGuideline, getRandomKeywords, Platform } from './utils'
+import NotebookLMService, { NotebookSource } from '../integrations/notebooklm-service'
+import * as path from 'path'
+import * as fs from 'fs'
+import { randomUUID } from 'crypto'
 
 export class SocialMediaAgent {
   private supabase: SupabaseClient | null = null
   private anthropic: Anthropic | null = null
+  private notebookLM: NotebookLMService | null = null
 
   private getSupabase(): SupabaseClient {
     if (!this.supabase) {
@@ -23,6 +28,41 @@ export class SocialMediaAgent {
       })
     }
     return this.anthropic
+  }
+
+  private getNotebookLM(): NotebookLMService {
+    if (!this.notebookLM) {
+      this.notebookLM = new NotebookLMService()
+    }
+    return this.notebookLM
+  }
+
+  private getVisualOrientation(platform: Platform): 'portrait' | 'landscape' | 'square' {
+    switch (platform) {
+      case 'instagram':
+      case 'tiktok':
+        return 'portrait'
+      case 'linkedin':
+      case 'facebook':
+      case 'youtube':
+        return 'landscape'
+      case 'twitter':
+        return 'landscape'
+      default:
+        return 'landscape'
+    }
+  }
+
+  private getAspectRatio(platform: Platform): string {
+    const orientation = this.getVisualOrientation(platform)
+    switch (orientation) {
+      case 'portrait':
+        return '9:16'
+      case 'landscape':
+        return '16:9'
+      case 'square':
+        return '1:1'
+    }
   }
 
   async fetchProductCatalog(limit: number = 20): Promise<ProductCatalogItem[]> {
@@ -119,7 +159,9 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
     platform: 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'tiktok' | 'youtube',
     targetKeywords: string[],
     scheduledFor?: Date,
-    productQuery?: string
+    productQuery?: string,
+    generateVisual: boolean = false,
+    visualType?: 'infographic' | 'slide_deck' | 'video_overview'
   ): Promise<string> {
     const products = productQuery
       ? await this.searchProducts(productQuery)
@@ -155,6 +197,22 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
       keywords: targetKeywords,
       scheduled: !!scheduledFor
     })
+
+    if (generateVisual) {
+      const visualResult = await this.generateVisualContent(
+        data.id,
+        visualType || 'infographic'
+      )
+
+      if (visualResult.success) {
+        await this.logActivity('visual_auto_generated', data.id, {
+          visual_type: visualType || 'infographic',
+          visual_url: visualResult.visualUrl
+        })
+      } else {
+        console.error('Failed to auto-generate visual:', visualResult.error)
+      }
+    }
 
     return data.id
   }
@@ -399,6 +457,378 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
           action: 'bulk_generation'
         }
       })
+  }
+
+  async generateVisualContent(
+    postId: string,
+    visualType: 'infographic' | 'slide_deck' | 'video_overview' = 'infographic'
+  ): Promise<{ success: boolean; visualUrl?: string; artifactId?: string; error?: string }> {
+    try {
+      const { data: post, error: postError } = await this.getSupabase()
+        .from('social_posts')
+        .select('*')
+        .eq('id', postId)
+        .single()
+
+      if (postError || !post) {
+        return { success: false, error: 'Post not found' }
+      }
+
+      const products = post.metadata?.products_referenced || []
+      const targetKeywords = post.metadata?.target_keywords || []
+      
+      let productDetails: ProductCatalogItem[] = []
+      if (products.length > 0) {
+        const productIds = products.map((p: any) => p.id)
+        const { data: productsData } = await this.getSupabase()
+          .from('products')
+          .select('*')
+          .in('id', productIds)
+        productDetails = productsData || []
+      }
+
+      const notebookTitle = `Social Post - ${post.platform} - ${new Date().toISOString().split('T')[0]}`
+      const notebookPurpose = `Visual content generation for ${post.platform} social media post`
+      
+      let notebook
+      const existingNotebookId = post.metadata?.notebooklm_notebook_id
+      
+      if (existingNotebookId) {
+        const { data: existingNotebook } = await this.getSupabase()
+          .from('notebooklm_notebooks')
+          .select('*')
+          .eq('notebook_id', existingNotebookId)
+          .single()
+        
+        if (existingNotebook) {
+          notebook = {
+            notebookId: existingNotebook.notebook_id,
+            title: existingNotebook.name,
+            purpose: existingNotebook.purpose,
+            createdAt: existingNotebook.created_at
+          }
+        }
+      }
+
+      if (!notebook) {
+        notebook = await this.getNotebookLM().createNotebook(notebookTitle, notebookPurpose)
+        
+        await this.getSupabase()
+          .from('notebooklm_notebooks')
+          .insert({
+            name: notebook.title,
+            notebook_id: notebook.notebookId,
+            purpose: notebook.purpose,
+            sources_count: 0,
+            status: 'active',
+            metadata: {
+              post_id: postId,
+              platform: post.platform
+            }
+          })
+      }
+
+      const sources: NotebookSource[] = [
+        {
+          type: 'text',
+          content: `Social Media Post Content:\n${post.content}\n\nPlatform: ${post.platform}\nTarget Keywords: ${targetKeywords.join(', ')}`,
+          title: 'Post Content',
+          metadata: { type: 'post_content' }
+        }
+      ]
+
+      if (productDetails.length > 0) {
+        const productContext = productDetails.map(p => 
+          `Product: ${p.name}\nBrand: ${p.brand || 'Unknown'}\nDescription: ${p.description || 'No description'}\nCategory: ${p.category || 'Uncategorized'}\nPrice: ${p.price ? `$${p.price}` : 'N/A'}\nFeatures: ${p.features?.join(', ') || 'None listed'}`
+        ).join('\n\n---\n\n')
+
+        sources.push({
+          type: 'text',
+          content: `Product Information:\n\n${productContext}`,
+          title: 'Product Catalog Data',
+          metadata: { type: 'product_data' }
+        })
+      }
+
+      await this.getNotebookLM().addSources(notebook.notebookId, sources)
+
+      await this.getSupabase()
+        .from('notebooklm_notebooks')
+        .update({ sources_count: sources.length })
+        .eq('notebook_id', notebook.notebookId)
+
+      const orientation = this.getVisualOrientation(post.platform)
+      const aspectRatio = this.getAspectRatio(post.platform)
+      
+      const visualPrompt = `Create a ${visualType === 'infographic' ? 'visually compelling infographic' : visualType === 'slide_deck' ? 'professional slide deck' : 'engaging video overview'} for ${post.platform} with ${aspectRatio} aspect ratio (${orientation} orientation). 
+
+Focus on: ${targetKeywords.join(', ')}
+
+Key points from the post:
+${post.content.substring(0, 500)}
+
+${productDetails.length > 0 ? `Featured products: ${productDetails.map(p => p.name).join(', ')}` : ''}
+
+Make it eye-catching, on-brand for home automation/smart home technology, and optimized for social media engagement.`
+
+      let artifactId: string
+      
+      if (visualType === 'infographic') {
+        artifactId = await this.getNotebookLM().generateInfographic(
+          notebook.notebookId,
+          visualPrompt,
+          orientation
+        )
+      } else if (visualType === 'slide_deck') {
+        artifactId = await this.getNotebookLM().generateSlides(
+          notebook.notebookId,
+          visualPrompt,
+          post.platform === 'linkedin' ? 'professional' : 'general'
+        )
+      } else {
+        artifactId = await this.getNotebookLM().generateVideoOverview(
+          notebook.notebookId,
+          'mp4',
+          post.platform === 'linkedin' ? 'professional' : 'dynamic'
+        )
+      }
+
+      const tempDir = path.join(process.cwd(), 'tmp')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+
+      const fileExtension = visualType === 'video_overview' ? 'mp4' : 'png'
+      const tempFilePath = path.join(tempDir, `${artifactId}.${fileExtension}`)
+      
+      const downloadResult = await this.getNotebookLM().downloadArtifact(artifactId, tempFilePath)
+
+      if (!downloadResult.success) {
+        throw new Error('Failed to download artifact from NotebookLM')
+      }
+
+      const fileBuffer = fs.readFileSync(tempFilePath)
+      const fileName = `${postId}/${randomUUID()}.${fileExtension}`
+      
+      const { data: uploadData, error: uploadError } = await this.getSupabase()
+        .storage
+        .from('notebooklm-visuals')
+        .upload(fileName, fileBuffer, {
+          contentType: visualType === 'video_overview' ? 'video/mp4' : 'image/png',
+          upsert: false
+        })
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        throw new Error(`Failed to upload to storage: ${uploadError.message}`)
+      }
+
+      const { data: { publicUrl } } = this.getSupabase()
+        .storage
+        .from('notebooklm-visuals')
+        .getPublicUrl(fileName)
+
+      fs.unlinkSync(tempFilePath)
+
+      const { data: notebookRecord } = await this.getSupabase()
+        .from('notebooklm_notebooks')
+        .select('id')
+        .eq('notebook_id', notebook.notebookId)
+        .single()
+
+      if (notebookRecord) {
+        await this.getSupabase()
+          .from('notebooklm_artifacts')
+          .insert({
+            notebook_id: notebookRecord.id,
+            artifact_type: visualType,
+            storage_path: fileName,
+            generation_prompt: visualPrompt,
+            status: 'completed',
+            linked_social_post_id: postId,
+            metadata: {
+              orientation,
+              aspect_ratio: aspectRatio,
+              platform: post.platform,
+              artifact_id: artifactId
+            }
+          })
+      }
+
+      const updatedMetadata = {
+        ...post.metadata,
+        notebooklm_notebook_id: notebook.notebookId,
+        notebooklm_artifact_id: artifactId,
+        visual_generated_at: new Date().toISOString()
+      }
+
+      await this.getSupabase()
+        .from('social_posts')
+        .update({
+          visual_content_url: publicUrl,
+          metadata: updatedMetadata
+        })
+        .eq('id', postId)
+
+      await this.logActivity('visual_generated', postId, {
+        visual_type: visualType,
+        orientation,
+        artifact_id: artifactId,
+        notebook_id: notebook.notebookId
+      })
+
+      return {
+        success: true,
+        visualUrl: publicUrl,
+        artifactId: artifactId
+      }
+
+    } catch (error) {
+      console.error('Error generating visual content:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      }
+    }
+  }
+
+  async regenerateVisual(
+    postId: string,
+    customPrompt?: string
+  ): Promise<{ success: boolean; visualUrl?: string; artifactId?: string; error?: string }> {
+    try {
+      const { data: post, error: postError } = await this.getSupabase()
+        .from('social_posts')
+        .select('*')
+        .eq('id', postId)
+        .single()
+
+      if (postError || !post) {
+        return { success: false, error: 'Post not found' }
+      }
+
+      const notebookId = post.metadata?.notebooklm_notebook_id
+
+      if (!notebookId) {
+        return { success: false, error: 'No notebook found for this post. Generate visual content first.' }
+      }
+
+      const orientation = this.getVisualOrientation(post.platform)
+      const aspectRatio = this.getAspectRatio(post.platform)
+
+      const basePrompt = `Create a visually compelling infographic for ${post.platform} with ${aspectRatio} aspect ratio (${orientation} orientation).
+
+Post content:
+${post.content}
+
+Make it eye-catching, on-brand for home automation/smart home technology, and optimized for social media engagement.`
+
+      const finalPrompt = customPrompt 
+        ? `${basePrompt}\n\nAdditional requirements:\n${customPrompt}`
+        : basePrompt
+
+      const artifactId = await this.getNotebookLM().generateInfographic(
+        notebookId,
+        finalPrompt,
+        orientation
+      )
+
+      const tempDir = path.join(process.cwd(), 'tmp')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+
+      const tempFilePath = path.join(tempDir, `${artifactId}.png`)
+      
+      const downloadResult = await this.getNotebookLM().downloadArtifact(artifactId, tempFilePath)
+
+      if (!downloadResult.success) {
+        throw new Error('Failed to download artifact from NotebookLM')
+      }
+
+      const fileBuffer = fs.readFileSync(tempFilePath)
+      const fileName = `${postId}/${randomUUID()}.png`
+      
+      const { error: uploadError } = await this.getSupabase()
+        .storage
+        .from('notebooklm-visuals')
+        .upload(fileName, fileBuffer, {
+          contentType: 'image/png',
+          upsert: false
+        })
+
+      if (uploadError) {
+        throw new Error(`Failed to upload to storage: ${uploadError.message}`)
+      }
+
+      const { data: { publicUrl } } = this.getSupabase()
+        .storage
+        .from('notebooklm-visuals')
+        .getPublicUrl(fileName)
+
+      fs.unlinkSync(tempFilePath)
+
+      const { data: notebookRecord } = await this.getSupabase()
+        .from('notebooklm_notebooks')
+        .select('id')
+        .eq('notebook_id', notebookId)
+        .single()
+
+      if (notebookRecord) {
+        await this.getSupabase()
+          .from('notebooklm_artifacts')
+          .insert({
+            notebook_id: notebookRecord.id,
+            artifact_type: 'infographic',
+            storage_path: fileName,
+            generation_prompt: finalPrompt,
+            status: 'completed',
+            linked_social_post_id: postId,
+            metadata: {
+              orientation,
+              aspect_ratio: aspectRatio,
+              platform: post.platform,
+              artifact_id: artifactId,
+              regenerated: true,
+              custom_prompt: customPrompt || null
+            }
+          })
+      }
+
+      const updatedMetadata = {
+        ...post.metadata,
+        notebooklm_artifact_id: artifactId,
+        visual_regenerated_at: new Date().toISOString(),
+        custom_prompt: customPrompt || null
+      }
+
+      await this.getSupabase()
+        .from('social_posts')
+        .update({
+          visual_content_url: publicUrl,
+          metadata: updatedMetadata
+        })
+        .eq('id', postId)
+
+      await this.logActivity('visual_regenerated', postId, {
+        artifact_id: artifactId,
+        custom_prompt: customPrompt || null,
+        orientation
+      })
+
+      return {
+        success: true,
+        visualUrl: publicUrl,
+        artifactId: artifactId
+      }
+
+    } catch (error) {
+      console.error('Error regenerating visual:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      }
+    }
   }
 
   private async logActivity(action: string, postId: string, metadata: any = {}): Promise<void> {

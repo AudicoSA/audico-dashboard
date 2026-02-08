@@ -10,6 +10,9 @@ The Social Media Agent is an AI-powered service that automatically generates, ma
 ✅ **RAG from Product Catalog** - Retrieves relevant products from Supabase to enrich content
 ✅ **Multi-Platform Support** - Optimized content for Facebook, Instagram, Twitter, LinkedIn, TikTok, YouTube
 ✅ **Smart Home Focus** - Targets 25+ home automation and smart home keywords
+✅ **Visual Content Generation** - NotebookLM integration for infographics, slides, and video overviews
+✅ **Platform-Specific Aspect Ratios** - Auto-detects and generates 16:9 (landscape) for LinkedIn/Facebook, 9:16 (portrait) for Instagram/TikTok
+✅ **Visual Regeneration** - Refine visuals with custom prompts for perfect results
 ✅ **Approval Workflow** - Integrates with squad_tasks for human review before publishing
 ✅ **Scheduled Posting** - Automatic publishing at scheduled times
 ✅ **Bulk Generation** - Create multiple posts at once for content planning
@@ -47,12 +50,44 @@ CREATE TABLE social_posts (
     platform TEXT NOT NULL CHECK (platform IN (...)),
     content TEXT NOT NULL,
     media_urls TEXT[],
+    visual_content_url TEXT,  -- New: NotebookLM generated visual URL
     status TEXT NOT NULL CHECK (status IN ('draft', 'scheduled', 'published', 'failed')),
     scheduled_for TIMESTAMPTZ,
     published_at TIMESTAMPTZ,
     post_url TEXT,
     engagement JSONB DEFAULT '{"likes": 0, "comments": 0, "shares": 0}',
     created_by TEXT REFERENCES squad_agents(name),
+    metadata JSONB DEFAULT '{}',  -- Includes: notebooklm_notebook_id, notebooklm_artifact_id
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+#### notebooklm_notebooks
+```sql
+CREATE TABLE notebooklm_notebooks (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    notebook_id TEXT NOT NULL UNIQUE,
+    purpose TEXT,
+    sources_count INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+#### notebooklm_artifacts
+```sql
+CREATE TABLE notebooklm_artifacts (
+    id UUID PRIMARY KEY,
+    notebook_id UUID NOT NULL REFERENCES notebooklm_notebooks(id),
+    artifact_type artifact_type NOT NULL,  -- 'infographic', 'slide_deck', 'video_overview'
+    storage_path TEXT,
+    generation_prompt TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    linked_social_post_id UUID REFERENCES social_posts(id),
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -103,6 +138,11 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 # Anthropic Claude API
 ANTHROPIC_API_KEY=your_anthropic_api_key
 
+# Google Cloud (for NotebookLM - optional, falls back to Python bridge if not set)
+GOOGLE_CLOUD_PROJECT_ID=your_project_id
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
+NOTEBOOKLM_PYTHON_PATH=/path/to/notebooklm_bridge.py
+
 # Cron Security (optional)
 CRON_SECRET=your_cron_secret
 ```
@@ -117,6 +157,10 @@ Run the SQL migrations in Supabase:
 
 -- Run 004_products_catalog.sql
 -- This creates the products table with sample smart home products
+
+-- Run 004_notebooklm_integration.sql
+-- This creates notebooklm_notebooks and notebooklm_artifacts tables
+-- Also adds visual_content_url to social_posts and creates storage bucket
 ```
 
 ### 4. Verify Setup
@@ -153,6 +197,83 @@ Response:
 {
   "postId": "uuid",
   "taskId": "uuid"
+}
+```
+
+### Generate Post with Visual Content
+
+Generate a post with an automatic visual infographic:
+
+```bash
+curl -X POST http://localhost:3001/api/social-agent \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "generate_post",
+    "platform": "instagram",
+    "keywords": ["smart home", "home automation", "smart lighting"],
+    "scheduledFor": "2024-02-10T10:00:00Z",
+    "productQuery": "smart lighting",
+    "generateVisual": true,
+    "visualType": "infographic"
+  }'
+```
+
+Response:
+```json
+{
+  "postId": "uuid",
+  "taskId": "uuid"
+}
+```
+
+**Visual Types:**
+- `infographic` - Static infographic (PNG)
+- `slide_deck` - Multi-slide presentation
+- `video_overview` - Short video overview (MP4)
+
+### Generate Visual for Existing Post
+
+Add visual content to an already created post:
+
+```bash
+curl -X POST http://localhost:3001/api/social-agent \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "generate_visual",
+    "postId": "uuid",
+    "visualType": "infographic"
+  }'
+```
+
+Response:
+```json
+{
+  "success": true,
+  "visualUrl": "https://your-project.supabase.co/storage/v1/object/public/notebooklm-visuals/...",
+  "artifactId": "infographic-1234567890"
+}
+```
+
+### Regenerate Visual with Custom Prompt
+
+Refine an existing visual with custom requirements:
+
+```bash
+curl -X POST http://localhost:3001/api/social-agent \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "regenerate_visual",
+    "postId": "uuid",
+    "customPrompt": "Make the design more modern and minimalist. Use blue and white color scheme. Add product photos."
+  }'
+```
+
+Response:
+```json
+{
+  "success": true,
+  "visualUrl": "https://your-project.supabase.co/storage/v1/object/public/notebooklm-visuals/...",
+  "artifactId": "infographic-9876543210"
 }
 ```
 
@@ -231,6 +352,35 @@ const postId = await socialAgent.createPostDraft(
   'smart speakers'
 )
 
+// Generate a post with visual content
+const postId = await socialAgent.createPostDraft(
+  'instagram',
+  ['smart home', 'IoT devices'],
+  new Date('2024-02-10T10:00:00Z'),
+  'smart lighting',
+  true,  // generateVisual
+  'infographic'  // visualType
+)
+
+// Generate visual content for existing post
+const visualResult = await socialAgent.generateVisualContent(
+  postId,
+  'infographic'  // or 'slide_deck', 'video_overview'
+)
+if (visualResult.success) {
+  console.log('Visual URL:', visualResult.visualUrl)
+  console.log('Artifact ID:', visualResult.artifactId)
+}
+
+// Regenerate visual with custom prompt
+const regenerateResult = await socialAgent.regenerateVisual(
+  postId,
+  'Make it more colorful with gradient backgrounds'
+)
+if (regenerateResult.success) {
+  console.log('New Visual URL:', regenerateResult.visualUrl)
+}
+
 // Create approval task
 const taskId = await socialAgent.createApprovalTask(postId)
 
@@ -296,6 +446,28 @@ const products = await socialAgent.searchProducts('sonos')
 4. **Error Handling** → If fails, status set to 'failed' with error details
 5. **Logging** → All actions logged to `squad_messages`
 
+### Visual Content Generation Flow
+
+1. **Initiate** → API call with `generateVisual: true` or `generate_visual` action
+2. **Retrieve Context** → Fetches post content and product data
+3. **Notebook Creation** → Creates or reuses NotebookLM notebook
+4. **Add Sources** → Adds post content and product data as sources
+5. **Detect Platform** → Determines aspect ratio (16:9 for LinkedIn/Facebook, 9:16 for Instagram/TikTok)
+6. **Generate Artifact** → Calls NotebookLM API to create infographic/slides/video
+7. **Download** → Downloads artifact to temporary directory
+8. **Upload to Storage** → Uploads to Supabase `notebooklm-visuals` bucket
+9. **Update Database** → Updates `social_posts.visual_content_url` and metadata
+10. **Cleanup** → Removes temporary files
+11. **Track Artifact** → Records in `notebooklm_artifacts` table for tracking
+
+### Visual Regeneration Flow
+
+1. **Retrieve Post** → Fetches existing post with notebook ID
+2. **Custom Prompt** → Combines base prompt with custom requirements
+3. **Generate New** → Creates new artifact with updated prompt
+4. **Upload & Update** → Same as generation flow
+5. **Metadata Update** → Records regeneration with custom prompt in metadata
+
 ## Platform Guidelines
 
 ### Facebook
@@ -303,36 +475,42 @@ const products = await socialAgent.searchProducts('sonos')
 - **Recommended**: 400 characters
 - **Hashtags**: 5 max
 - **Style**: Conversational, emojis, CTA
+- **Visual Format**: 16:9 landscape (1920x1080)
 
 ### Instagram
 - **Max Length**: 2,200 characters
 - **Recommended**: 300 characters
 - **Hashtags**: 30 max (3-5 recommended)
 - **Style**: Visual-focused, short sentences, emoji-rich
+- **Visual Format**: 9:16 portrait (1080x1920)
 
 ### Twitter/X
 - **Max Length**: 280 characters
 - **Recommended**: 280 characters
 - **Hashtags**: 2 max
 - **Style**: Concise, engaging hook
+- **Visual Format**: 16:9 landscape (1920x1080)
 
 ### LinkedIn
 - **Max Length**: 3,000 characters
 - **Recommended**: 1,300 characters
 - **Hashtags**: 5 max
 - **Style**: Professional, value-driven, business benefits
+- **Visual Format**: 16:9 landscape (1920x1080)
 
 ### TikTok
 - **Max Length**: 2,200 characters
 - **Recommended**: 150 characters
 - **Hashtags**: 10 max (3-5 recommended)
 - **Style**: Short, trendy, youth-oriented
+- **Visual Format**: 9:16 portrait (1080x1920)
 
 ### YouTube
 - **Max Length**: 5,000 characters
 - **Recommended**: 1,000 characters
 - **Hashtags**: 15 max
 - **Style**: Keyword-rich, timestamps, links
+- **Visual Format**: 16:9 landscape (1920x1080)
 
 ## Target Keywords
 
@@ -438,15 +616,17 @@ Monitor the agent through:
 ## Future Enhancements
 
 - [ ] Direct integration with social media APIs (Meta, Twitter, etc.)
-- [ ] Image generation with DALL-E or Midjourney
+- [x] Visual content generation with NotebookLM (infographics, slides, videos) ✅
 - [ ] A/B testing for content variations
 - [ ] Engagement analytics and learning
 - [ ] Automated hashtag research
 - [ ] Competitor content analysis
 - [ ] Multi-language support
-- [ ] Video content generation
+- [ ] Advanced video editing and animations
 - [ ] Sentiment analysis
 - [ ] Content calendar visualization
+- [ ] Automated visual A/B testing
+- [ ] Dynamic product insertion in visuals
 
 ## Troubleshooting
 
@@ -468,6 +648,24 @@ Monitor the agent through:
 - Run 004_products_catalog.sql migration
 - Check products table has data
 - Verify Supabase connection
+
+### "Failed to generate visual content"
+- Check GOOGLE_CLOUD_PROJECT_ID and GOOGLE_APPLICATION_CREDENTIALS are set
+- Verify NotebookLM API access
+- Check NOTEBOOKLM_PYTHON_PATH if using Python fallback
+- Ensure notebooklm-visuals storage bucket exists
+- Check storage bucket policies allow uploads
+
+### "Failed to upload to storage"
+- Verify notebooklm-visuals bucket exists in Supabase Storage
+- Check storage bucket is public for read access
+- Verify service role key has storage permissions
+- Check file size limits (50MB default)
+
+### "No notebook found for this post"
+- Generate visual content first with generate_visual action
+- Check notebooklm_notebooks table for records
+- Verify post metadata contains notebooklm_notebook_id
 
 ## Support
 
