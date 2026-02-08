@@ -75,3 +75,81 @@ export interface ScheduledPostingResult {
   }>
   timestamp: string
 }
+
+export interface GooglePlaceResult {
+  name: string
+  formatted_address: string
+  business_status: string
+  place_id: string
+  types: string[]
+  rating?: number
+  user_ratings_total?: number
+  website?: string
+  formatted_phone_number?: string
+  verified: boolean
+}
+
+export interface Product {
+  id: string
+  name: string
+  price: number
+  cost: number
+  category?: string
+  sku?: string
+  metadata?: any
+}
+
+export interface ProductWithResellerPrice extends Product {
+  reseller_price: number
+  margin: number
+}
+
+export interface NewsletterDraft {
+  subject: string
+  content: string
+  products: Array<{
+    id: string
+    name: string
+    price: number
+    trending_score: number
+  }>
+  metadata: {
+    generated_at: string
+    trending_keywords: string[]
+    seo_insights: string[]
+  }
+}
+
+export interface InfluencerOpportunity {
+  platform: 'twitter' | 'instagram' | 'youtube' | 'linkedin' | 'tiktok'
+  handle: string
+  name: string
+  followers?: number
+  engagement_rate?: number
+  niche?: string
+  contact_info?: string
+  estimated_reach?: number
+  metadata?: any
+}
+
+export interface TrendingProduct {
+  keyword: string
+  mentions: number
+  total_volume: number
+  urls: string[]
+}
+
+export interface MarketingAgentAction {
+  action: 
+    | 'process_reseller_signup'
+    | 'calculate_reseller_pricing'
+    | 'generate_newsletter'
+    | 'find_influencers'
+    | 'search_influencers'
+    | 'run_workflow'
+    | 'get_trending_products'
+  applicationId?: string
+  niches?: string[]
+  niche?: string
+  limit?: number
+}

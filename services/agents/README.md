@@ -1,9 +1,14 @@
-# Social Media Agent Service
+# Agent Services
+
+This directory contains autonomous agent services that automate various business processes.
+
+## Available Agents
+
+### Social Media Agent
 
 A comprehensive social media content generation and management service using Claude AI with RAG (Retrieval-Augmented Generation) from the Supabase product catalog.
 
-## Features
-
+**Features:**
 - **AI-Powered Content Generation**: Uses Claude 3.5 Sonnet to generate platform-specific social media content
 - **RAG from Product Catalog**: Retrieves relevant product information from Supabase to create contextually rich posts
 - **Multi-Platform Support**: Generates content optimized for Facebook, Instagram, Twitter, LinkedIn, TikTok, and YouTube
@@ -12,28 +17,50 @@ A comprehensive social media content generation and management service using Cla
 - **Scheduled Posting**: Supports scheduling posts for future publication
 - **Bulk Generation**: Can generate multiple posts at once for content planning
 
-## Architecture
+**API Endpoints:**
+- `/api/social-agent` - Main endpoint for CRUD operations
+- `/api/social-agent/scheduled` - Cron endpoint for automated posting
 
-### Core Components
+**See [Social Media Agent Documentation](#social-media-agent-detailed) below for detailed usage.**
+
+### Marketing Agent
+
+The Marketing Agent is a comprehensive service that automates marketing tasks including reseller onboarding, pricing calculations, newsletter generation, and influencer outreach.
+
+**Features:**
+- **Reseller Signup Processing**: Verifies business details via Google Places API
+- **Reseller Pricing Calculator**: Calculates reseller prices at cost + 10%
+- **Newsletter Generation**: Uses Claude (Anthropic) to generate engaging newsletters with SEO-driven content
+- **Influencer Discovery**: Searches across Twitter, Instagram, YouTube, and LinkedIn for tech influencers
+
+**API Endpoints:**
+- `POST /api/agents/marketing` - Execute marketing actions
+- `GET /api/agents/marketing` - Query marketing data
+
+**See [Marketing Agent Documentation](#marketing-agent-detailed) below for detailed usage.**
+
+---
+
+## Social Media Agent (Detailed)
+
+### Architecture
+
+#### Core Components
 
 1. **SocialMediaAgent Class** (`services/agents/social-agent.ts`)
    - Main service class handling all social media operations
    - Integrates with Supabase for data persistence
    - Uses Anthropic's Claude API for content generation
 
-2. **API Endpoints**
-   - `/api/social-agent` - Main endpoint for CRUD operations
-   - `/api/social-agent/scheduled` - Cron endpoint for automated posting
-
-3. **Database Tables**
+2. **Database Tables**
    - `social_posts` - Stores all social media posts and drafts
    - `products` - Product catalog for RAG context
    - `squad_tasks` - Approval workflow tasks
    - `squad_messages` - Activity logging
 
-## API Usage
+### API Usage
 
-### Generate a Single Post
+#### Generate a Single Post
 
 ```typescript
 POST /api/social-agent
@@ -52,7 +79,7 @@ Response:
 }
 ```
 
-### Approve a Post
+#### Approve a Post
 
 ```typescript
 POST /api/social-agent
@@ -68,23 +95,7 @@ Response:
 }
 ```
 
-### Reject a Post
-
-```typescript
-POST /api/social-agent
-{
-  "action": "reject_post",
-  "postId": "uuid",
-  "reason": "Content needs more product details"
-}
-
-Response:
-{
-  "success": true
-}
-```
-
-### Generate Bulk Posts
+#### Generate Bulk Posts
 
 ```typescript
 POST /api/social-agent
@@ -100,57 +111,7 @@ Response:
 }
 ```
 
-### Schedule Weekly Posts
-
-```typescript
-POST /api/social-agent
-{
-  "action": "schedule_weekly"
-}
-
-Response:
-{
-  "success": true
-}
-```
-
-### Get Scheduled Posts
-
-```typescript
-GET /api/social-agent
-
-Response:
-{
-  "posts": [
-    {
-      "id": "uuid",
-      "platform": "facebook",
-      "content": "...",
-      "scheduled_for": "2024-02-10T10:00:00Z",
-      ...
-    }
-  ]
-}
-```
-
-### Publish Post (Automated)
-
-```typescript
-POST /api/social-agent
-{
-  "action": "publish_post",
-  "postId": "uuid"
-}
-
-Response:
-{
-  "success": true
-}
-```
-
-## Direct Service Usage
-
-You can also import and use the service directly:
+### Direct Service Usage
 
 ```typescript
 import { socialAgent } from '@/services/agents/social-agent'
@@ -168,85 +129,16 @@ const taskId = await socialAgent.createApprovalTask(postId)
 
 // Approve post
 await socialAgent.approvePost(postId, new Date('2024-02-10T10:00:00Z'))
-
-// Generate bulk posts
-const postIds = await socialAgent.generateBulkPosts(7)
-
-// Schedule weekly posts
-await socialAgent.scheduleWeeklyPosts()
 ```
 
-## Workflow
+### Target Keywords
 
-1. **Content Generation**
-   - Agent fetches relevant products from catalog based on query or random selection
-   - Constructs prompt with platform guidelines and product context
-   - Claude generates platform-optimized content
+The social agent focuses on home automation and smart home keywords:
+- smart home, home automation, smart lighting, smart security
+- voice control, smart speakers, connected home, IoT devices
+- smart thermostat, home assistant, smart locks, smart cameras
 
-2. **Draft Creation**
-   - Post saved to `social_posts` table with status 'draft'
-   - Metadata includes target keywords and referenced products
-   - Activity logged to `squad_messages`
-
-3. **Approval Workflow**
-   - Task created in `squad_tasks` table
-   - Assigned to Jarvis (orchestrator)
-   - Mentions Kenny flag set for review
-
-4. **Approval/Rejection**
-   - Approved: Post status updated, scheduled if date provided
-   - Rejected: Metadata updated with reason, task closed
-
-5. **Scheduled Publishing**
-   - Cron job calls `/api/social-agent/scheduled`
-   - Fetches posts scheduled for next hour
-   - Updates status to 'published' or 'failed'
-
-## Environment Variables
-
-Required environment variables:
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# Anthropic Claude API
-ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# Cron Security (optional)
-CRON_SECRET=your_cron_secret
-```
-
-## Target Keywords
-
-The agent focuses on these home automation and smart home keywords:
-
-- smart home
-- home automation
-- smart lighting
-- smart security
-- voice control
-- smart speakers
-- connected home
-- IoT devices
-- smart thermostat
-- home assistant
-- smart locks
-- smart cameras
-- wireless home
-- automated living
-- smart devices
-- intelligent home
-- home control
-- smart entertainment
-- multiroom audio
-- smart switches
-
-## Platform Guidelines
-
-Each platform has specific content guidelines:
+### Platform Guidelines
 
 - **Facebook**: 1-2 paragraphs, conversational, emojis, CTA
 - **Instagram**: Visual-focused, 3-5 hashtags, emoji-rich, short sentences
@@ -255,73 +147,154 @@ Each platform has specific content guidelines:
 - **TikTok**: Short, trendy, youth-oriented, 3-5 hashtags
 - **YouTube**: Keyword-rich description, timestamps, links
 
-## Database Schema
+---
 
-### social_posts
+## Marketing Agent (Detailed)
 
-```sql
-CREATE TABLE social_posts (
-    id UUID PRIMARY KEY,
-    platform TEXT NOT NULL,
-    content TEXT NOT NULL,
-    media_urls TEXT[],
-    status TEXT NOT NULL, -- 'draft', 'scheduled', 'published', 'failed'
-    scheduled_for TIMESTAMPTZ,
-    published_at TIMESTAMPTZ,
-    post_url TEXT,
-    engagement JSONB,
-    created_by TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ
-);
-```
+### Features
 
-### products
+#### 1. Reseller Signup Processing
+- **Business Verification**: Verifies business details via Google Places API
+- **Status Management**: Automatically approves or flags applications for review
+- **Data Storage**: Stores verification results in `reseller_applications` table
 
-```sql
-CREATE TABLE products (
-    id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    category TEXT,
-    brand TEXT,
-    price DECIMAL(10, 2),
-    features TEXT[],
-    tags TEXT[],
-    -- ... more fields
-);
-```
+#### 2. Reseller Pricing Calculator
+- **Cost-Plus Pricing**: Calculates reseller prices at cost + 10%
+- **Product Catalog Integration**: Fetches products from Supabase `products` table
+- **Margin Calculation**: Computes profit margins for each product
 
-## Scheduled Jobs
+#### 3. Newsletter Generation
+- **AI-Powered Content**: Uses Claude (Anthropic) to generate engaging newsletters
+- **SEO-Driven**: Analyzes trending keywords from `seo_audits` data
+- **Product Integration**: Features top products with pricing
+- **Brevo-Ready**: Outputs HTML format compatible with Brevo.com
 
-Set up a cron job to call the scheduled endpoint:
+#### 4. Influencer Discovery
+- **Multi-Platform Search**: Searches across Twitter, Instagram, YouTube, and LinkedIn
+- **Engagement Metrics**: Calculates engagement rates for each influencer
+- **Task Creation**: Stores opportunities as tasks in `squad_tasks` table
+- **Niche Targeting**: Supports custom niche searches (tech, audio, smart home, etc.)
 
-```bash
-# Every hour
-curl -X POST https://your-domain.com/api/social-agent/scheduled \
-  -H "Authorization: Bearer ${CRON_SECRET}"
-```
+### API Endpoints
 
-Or use Vercel Cron:
+#### POST /api/agents/marketing
 
+##### Process Reseller Signup
 ```json
 {
-  "crons": [
-    {
-      "path": "/api/social-agent/scheduled",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "action": "process_reseller_signup",
+  "applicationId": "uuid-here"
 }
 ```
 
-## Future Enhancements
+##### Calculate Reseller Pricing
+```json
+{
+  "action": "calculate_reseller_pricing"
+}
+```
 
-- Integration with actual social media APIs (Meta, Twitter, etc.)
-- Image generation using DALL-E or Midjourney
-- A/B testing for content variations
-- Engagement analytics and optimization
-- Automated hashtag research
-- Competitor content analysis
-- Multi-language support
+##### Generate Newsletter
+```json
+{
+  "action": "generate_newsletter"
+}
+```
+
+##### Find and Store Influencers
+```json
+{
+  "action": "find_influencers",
+  "niches": ["tech", "audio", "smart home"]
+}
+```
+
+##### Run Complete Workflow
+```json
+{
+  "action": "run_workflow"
+}
+```
+
+#### GET /api/agents/marketing
+
+- `GET /api/agents/marketing?action=get_trending_products&limit=10`
+- `GET /api/agents/marketing?action=calculate_reseller_pricing`
+
+### Programmatic Usage
+
+```typescript
+import MarketingAgent from '@/services/agents/marketing-agent'
+
+const agent = new MarketingAgent()
+
+// Process a reseller application
+await agent.processResellerSignup('application-uuid')
+
+// Generate newsletter
+const newsletter = await agent.generateNewsletterDraft()
+
+// Find influencers and create tasks
+await agent.findAndStoreInfluencers(['tech', 'audio'])
+
+// Run complete workflow
+await agent.runMarketingWorkflow()
+```
+
+### Database Tables
+
+- `reseller_applications` - Reseller signup data
+- `products` - Product catalog with cost/price
+- `seo_audits` - SEO data with trending keywords
+- `squad_tasks` - Task management
+- `squad_messages` - Activity logging
+
+---
+
+## Environment Variables
+
+Required environment variables for all agents:
+
+```bash
+# Supabase (Required for all agents)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Anthropic Claude API (Required for both agents)
+ANTHROPIC_API_KEY=your_anthropic_api_key
+
+# Cron Security (Optional for social agent)
+CRON_SECRET=your_cron_secret
+
+# Marketing Agent Specific APIs
+GOOGLE_PLACES_API_KEY=your_key_here
+TWITTER_BEARER_TOKEN=your_token_here
+INSTAGRAM_ACCESS_TOKEN=your_token_here
+INSTAGRAM_USER_ID=your_user_id_here
+YOUTUBE_API_KEY=your_key_here
+LINKEDIN_ACCESS_TOKEN=your_token_here
+```
+
+## Activity Logging
+
+All agents log operations to `squad_messages` table with structured data:
+
+```typescript
+{
+  from_agent: 'social' | 'marketing',
+  message: 'Operation description',
+  data: {
+    event_type: 'operation_type',
+    timestamp: '2024-01-01T00:00:00Z',
+    // Additional context
+  }
+}
+```
+
+## Error Handling
+
+- **Graceful Degradation**: Missing API keys result in warnings, not failures
+- **Transaction Safety**: Database operations use proper error handling
+- **Activity Logging**: All major operations are logged for audit trail
+- **Detailed Errors**: API returns detailed error messages in response
