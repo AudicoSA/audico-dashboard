@@ -351,3 +351,29 @@ CREATE TRIGGER update_influencer_opportunities_updated_at
     BEFORE UPDATE ON influencer_opportunities
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- AGENT_LOGS: Agent error and activity logging
+-- ============================================
+CREATE TABLE IF NOT EXISTS agent_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_name TEXT NOT NULL,
+    log_level TEXT NOT NULL CHECK (log_level IN ('info', 'warning', 'error', 'critical')),
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    error_details JSONB,
+    context JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for agent_logs
+CREATE INDEX IF NOT EXISTS idx_agent_logs_agent_name ON agent_logs(agent_name);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_log_level ON agent_logs(log_level);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_event_type ON agent_logs(event_type);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC);
+
+-- Enable RLS for agent_logs
+ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policy: Allow all operations for authenticated users
+CREATE POLICY "Allow all for authenticated" ON agent_logs FOR ALL USING (true);

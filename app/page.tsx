@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Mail, Package, TrendingUp, Activity, CheckCircle2, Clock, AlertCircle, ArrowUpRight, Plus, CreditCard } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import ChatWidget from './components/ChatWidget'
+import SystemHealthWidget from './components/SystemHealthWidget'
 
 export default function Home() {
   const [metrics, setMetrics] = useState({
@@ -99,6 +100,9 @@ export default function Home() {
 
         {/* Right Column: "Card" Style Widgets */}
         <div className="space-y-6">
+          {/* System Health Widget */}
+          <SystemHealthWidget />
+
           {/* Agent Status Block */}
           <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">

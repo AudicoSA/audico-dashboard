@@ -14,6 +14,14 @@ if (typeof window !== 'undefined') {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Server-side Supabase client with service role key
+export function getServerSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
 export type EmailLog = {
   id: string
   gmail_message_id: string
@@ -354,4 +362,24 @@ export type InfluencerOpportunity = {
   metadata: any
   created_at: string
   updated_at: string
+}
+
+export type AgentLogEntry = {
+  id: string
+  agent_name: string
+  log_level: 'info' | 'warning' | 'error' | 'critical'
+  event_type: string
+  message: string
+  error_details: any
+  context: any
+  created_at: string
+}
+
+export type SquadAgent = {
+  id: string
+  name: string
+  role: string
+  status: 'active' | 'idle' | 'offline'
+  last_active: string
+  created_at: string
 }

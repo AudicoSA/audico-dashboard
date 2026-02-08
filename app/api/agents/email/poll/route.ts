@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { checkRateLimit, logAgentExecution, AGENT_RATE_LIMITS } from '@/lib/rate-limiter'
+import { logAgentActivity } from '@/lib/logger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,6 +54,15 @@ export async function POST(request: NextRequest) {
         { status: 429 }
       )
     }
+
+    await logAgentActivity({
+      agentName: 'email_agent',
+      logLevel: 'info',
+      eventType: 'poll_start',
+      message: 'Starting Gmail poll',
+      context: { action: 'poll_start' }
+    })
+
     const gmail = await getGmailClient()
 
     await logToSquadMessages('email_agent', 'Starting Gmail poll', { action: 'poll_start' })
@@ -149,6 +159,19 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Gmail poll error:', error)
+    
+    await logAgentActivity({
+      agentName: 'email_agent',
+      logLevel: 'error',
+      eventType: 'poll_error',
+      message: `Gmail poll failed: ${error.message}`,
+      errorDetails: {
+        error: error.message,
+        stack: error.stack
+      },
+      context: { action: 'poll_error' }
+    })
+
     await logToSquadMessages(
       'email_agent',
       `Poll failed: ${error.message}`,
