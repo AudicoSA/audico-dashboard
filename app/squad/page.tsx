@@ -32,6 +32,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import OrchestratorPanel from './components/OrchestratorPanel'
 import EmailAgentPanel from './components/EmailAgentPanel'
+import SocialAgentPanel from './components/SocialAgentPanel'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -464,7 +465,14 @@ export default function MissionControl() {
         )}
 
         {activeTab === 'social' && (
-          <SocialMediaTab posts={socialPosts} formatTimeAgo={formatTimeAgo} />
+          <motion.div
+            key="social"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <SocialAgentPanel />
+          </motion.div>
         )}
 
         {activeTab === 'ads' && (
