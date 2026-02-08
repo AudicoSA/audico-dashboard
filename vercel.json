@@ -25,28 +25,6 @@
       "schedule": "0 */4 * * *"
     }
   ],
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
-    "GMAIL_CLIENT_ID": "@gmail_client_id",
-    "GMAIL_CLIENT_SECRET": "@gmail_client_secret",
-    "GMAIL_REDIRECT_URI": "@gmail_redirect_uri",
-    "GMAIL_REFRESH_TOKEN": "@gmail_refresh_token",
-    "NEXT_PUBLIC_API_URL": "@backend_api_url",
-    "BACKEND_URL": "@backend_url",
-    "KV_REST_API_URL": "@kv_rest_api_url",
-    "KV_REST_API_TOKEN": "@kv_rest_api_token",
-    "KV_REST_API_READ_ONLY_TOKEN": "@kv_rest_api_read_only_token",
-    "AUDICO_CHAT_QUOTE_SUPABASE_URL": "@audico_chat_quote_supabase_url",
-    "AUDICO_CHAT_QUOTE_SUPABASE_KEY": "@audico_chat_quote_supabase_key"
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key"
-    }
-  },
   "rewrites": [
     {
       "source": "/api/:path*",
