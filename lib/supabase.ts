@@ -271,3 +271,87 @@ export type NotificationPreference = {
   created_at: string
   updated_at: string
 }
+
+export type ApprovedReseller = {
+  id: string
+  application_id: string | null
+  company_name: string
+  contact_name: string
+  contact_email: string
+  contact_phone: string | null
+  website: string | null
+  commission_rate: number
+  discount_tier: 'standard' | 'premium' | 'platinum'
+  total_orders: number
+  total_revenue: number
+  last_order_date: string | null
+  status: 'active' | 'inactive' | 'suspended'
+  notes: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type ResellerOrder = {
+  id: string
+  reseller_id: string
+  order_reference: string
+  order_date: string
+  total_amount: number
+  commission_amount: number
+  status: 'pending' | 'processing' | 'completed' | 'cancelled'
+  items: any[]
+  notes: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type NewsletterDraft = {
+  id: string
+  title: string
+  subject_line: string
+  preview_text: string | null
+  content: string
+  html_content: string | null
+  status: 'draft' | 'review' | 'scheduled' | 'sent'
+  scheduled_for: string | null
+  sent_at: string | null
+  recipient_count: number
+  open_rate: number | null
+  click_rate: number | null
+  ai_suggestions: any[]
+  created_by: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type InfluencerOpportunity = {
+  id: string
+  name: string
+  platform: 'instagram' | 'youtube' | 'tiktok' | 'twitter' | 'linkedin' | 'facebook'
+  handle: string
+  follower_count: number | null
+  engagement_rate: number | null
+  niche: string | null
+  status: 'identified' | 'contacted' | 'negotiating' | 'agreed' | 'active' | 'completed' | 'declined'
+  outreach_date: string | null
+  response_date: string | null
+  campaign_start: string | null
+  campaign_end: string | null
+  budget_allocated: number | null
+  budget_spent: number
+  deliverables: any[]
+  performance_metrics: {
+    reach: number
+    impressions: number
+    clicks: number
+    conversions: number
+  }
+  notes: string | null
+  managed_by: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}

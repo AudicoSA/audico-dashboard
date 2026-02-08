@@ -196,3 +196,158 @@ CREATE TRIGGER update_reseller_applications_updated_at
     BEFORE UPDATE ON reseller_applications
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- APPROVED_RESELLERS: Track approved resellers with order history
+-- ============================================
+CREATE TABLE IF NOT EXISTS approved_resellers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    application_id UUID REFERENCES reseller_applications(id) ON DELETE SET NULL,
+    company_name TEXT NOT NULL,
+    contact_name TEXT NOT NULL,
+    contact_email TEXT NOT NULL,
+    contact_phone TEXT,
+    website TEXT,
+    commission_rate DECIMAL(5, 2) DEFAULT 10.00,
+    discount_tier TEXT DEFAULT 'standard' CHECK (discount_tier IN ('standard', 'premium', 'platinum')),
+    total_orders INTEGER DEFAULT 0,
+    total_revenue DECIMAL(12, 2) DEFAULT 0,
+    last_order_date TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
+    notes TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for approved_resellers
+CREATE INDEX IF NOT EXISTS idx_approved_resellers_status ON approved_resellers(status);
+CREATE INDEX IF NOT EXISTS idx_approved_resellers_email ON approved_resellers(contact_email);
+CREATE INDEX IF NOT EXISTS idx_approved_resellers_created ON approved_resellers(created_at DESC);
+
+-- ============================================
+-- RESELLER_ORDERS: Track individual reseller orders
+-- ============================================
+CREATE TABLE IF NOT EXISTS reseller_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reseller_id UUID NOT NULL REFERENCES approved_resellers(id) ON DELETE CASCADE,
+    order_reference TEXT NOT NULL,
+    order_date TIMESTAMPTZ DEFAULT NOW(),
+    total_amount DECIMAL(12, 2) NOT NULL,
+    commission_amount DECIMAL(12, 2) DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'cancelled')),
+    items JSONB DEFAULT '[]'::jsonb,
+    notes TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for reseller_orders
+CREATE INDEX IF NOT EXISTS idx_reseller_orders_reseller_id ON reseller_orders(reseller_id);
+CREATE INDEX IF NOT EXISTS idx_reseller_orders_status ON reseller_orders(status);
+CREATE INDEX IF NOT EXISTS idx_reseller_orders_date ON reseller_orders(order_date DESC);
+CREATE INDEX IF NOT EXISTS idx_reseller_orders_created ON reseller_orders(created_at DESC);
+
+-- ============================================
+-- NEWSLETTER_DRAFTS: Newsletter content management
+-- ============================================
+CREATE TABLE IF NOT EXISTS newsletter_drafts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    subject_line TEXT NOT NULL,
+    preview_text TEXT,
+    content TEXT NOT NULL,
+    html_content TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'review', 'scheduled', 'sent')),
+    scheduled_for TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ,
+    recipient_count INTEGER DEFAULT 0,
+    open_rate DECIMAL(5, 2),
+    click_rate DECIMAL(5, 2),
+    ai_suggestions JSONB DEFAULT '[]'::jsonb,
+    created_by TEXT REFERENCES squad_agents(name) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for newsletter_drafts
+CREATE INDEX IF NOT EXISTS idx_newsletter_drafts_status ON newsletter_drafts(status);
+CREATE INDEX IF NOT EXISTS idx_newsletter_drafts_scheduled ON newsletter_drafts(scheduled_for) WHERE status = 'scheduled';
+CREATE INDEX IF NOT EXISTS idx_newsletter_drafts_created_by ON newsletter_drafts(created_by);
+CREATE INDEX IF NOT EXISTS idx_newsletter_drafts_created ON newsletter_drafts(created_at DESC);
+
+-- ============================================
+-- INFLUENCER_OPPORTUNITIES: Track influencer partnerships
+-- ============================================
+CREATE TABLE IF NOT EXISTS influencer_opportunities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    platform TEXT NOT NULL CHECK (platform IN ('instagram', 'youtube', 'tiktok', 'twitter', 'linkedin', 'facebook')),
+    handle TEXT NOT NULL,
+    follower_count INTEGER,
+    engagement_rate DECIMAL(5, 2),
+    niche TEXT,
+    status TEXT NOT NULL DEFAULT 'identified' CHECK (status IN ('identified', 'contacted', 'negotiating', 'agreed', 'active', 'completed', 'declined')),
+    outreach_date TIMESTAMPTZ,
+    response_date TIMESTAMPTZ,
+    campaign_start TIMESTAMPTZ,
+    campaign_end TIMESTAMPTZ,
+    budget_allocated DECIMAL(10, 2),
+    budget_spent DECIMAL(10, 2) DEFAULT 0,
+    deliverables JSONB DEFAULT '[]'::jsonb,
+    performance_metrics JSONB DEFAULT '{"reach": 0, "impressions": 0, "clicks": 0, "conversions": 0}'::jsonb,
+    notes TEXT,
+    managed_by TEXT REFERENCES squad_agents(name) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for influencer_opportunities
+CREATE INDEX IF NOT EXISTS idx_influencer_opportunities_platform ON influencer_opportunities(platform);
+CREATE INDEX IF NOT EXISTS idx_influencer_opportunities_status ON influencer_opportunities(status);
+CREATE INDEX IF NOT EXISTS idx_influencer_opportunities_managed_by ON influencer_opportunities(managed_by);
+CREATE INDEX IF NOT EXISTS idx_influencer_opportunities_created ON influencer_opportunities(created_at DESC);
+
+-- ============================================
+-- Enable RLS for new tables
+-- ============================================
+ALTER TABLE approved_resellers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reseller_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE newsletter_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE influencer_opportunities ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies: Allow all operations for authenticated users
+CREATE POLICY "Allow all for authenticated" ON approved_resellers FOR ALL USING (true);
+CREATE POLICY "Allow all for authenticated" ON reseller_orders FOR ALL USING (true);
+CREATE POLICY "Allow all for authenticated" ON newsletter_drafts FOR ALL USING (true);
+CREATE POLICY "Allow all for authenticated" ON influencer_opportunities FOR ALL USING (true);
+
+-- ============================================
+-- Updated_at triggers for new tables
+-- ============================================
+DROP TRIGGER IF EXISTS update_approved_resellers_updated_at ON approved_resellers;
+CREATE TRIGGER update_approved_resellers_updated_at
+    BEFORE UPDATE ON approved_resellers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_reseller_orders_updated_at ON reseller_orders;
+CREATE TRIGGER update_reseller_orders_updated_at
+    BEFORE UPDATE ON reseller_orders
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_newsletter_drafts_updated_at ON newsletter_drafts;
+CREATE TRIGGER update_newsletter_drafts_updated_at
+    BEFORE UPDATE ON newsletter_drafts
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_influencer_opportunities_updated_at ON influencer_opportunities;
+CREATE TRIGGER update_influencer_opportunities_updated_at
+    BEFORE UPDATE ON influencer_opportunities
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
