@@ -132,7 +132,7 @@ const MOCK_ACTIVITY: ActivityItem[] = [
   { id: '1', from_agent: 'jarvis', message: 'Assigned delivery complaint to Sizwe for immediate handling', created_at: new Date(Date.now() - 5 * 60000).toISOString() },
 ]
 
-export default function MissionControl() {
+export default function AgentCommandPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS)
   const [activity, setActivity] = useState<ActivityItem[]>(MOCK_ACTIVITY)
@@ -323,9 +323,9 @@ export default function MissionControl() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
             <Users className="text-lime-400" />
-            Mission Control
+            AI Agent Command
           </h2>
-          <p className="text-gray-400 mt-1">Manage and coordinate your AI agent squad</p>
+          <p className="text-gray-400 mt-1">Your central hub for managing and coordinating all AI agents</p>
         </div>
         {activeTab === 'overview' && (
           <div className="flex gap-3">
