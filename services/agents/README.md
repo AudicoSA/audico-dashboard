@@ -39,6 +39,19 @@ The Marketing Agent is a comprehensive service that automates marketing tasks in
 
 **See [Marketing Agent Documentation](#marketing-agent-detailed) below for detailed usage.**
 
+### SEO Agent
+
+The SEO Agent provides comprehensive SEO auditing and content generation capabilities for OpenCart products.
+
+**Features:**
+- **Product Auditing**: Scans OpenCart products for missing or inadequate SEO content
+- **Image Quality Analysis**: Checks product images for quality, resolution, and format
+- **AI-Powered Content Generation**: Uses Claude AI to generate SEO-optimized product descriptions and meta tags
+- **Audit Results Storage**: Stores audit results in Supabase `seo_audits` table
+- **Automated Fixes**: Can automatically apply generated SEO content to products
+
+**See [SEO Agent Documentation](#seo-agent-detailed) below for detailed usage.**
+
 ---
 
 ## Social Media Agent (Detailed)
@@ -251,6 +264,216 @@ await agent.runMarketingWorkflow()
 
 ---
 
+## SEO Agent (Detailed)
+
+### Features
+
+The SEO Agent service provides comprehensive SEO auditing and content generation capabilities for OpenCart products.
+
+- **Product Auditing**: Scans OpenCart products for missing or inadequate SEO content
+- **Image Quality Analysis**: Checks product images for quality, resolution, and format
+- **AI-Powered Content Generation**: Uses Claude AI to generate SEO-optimized product descriptions and meta tags
+- **Audit Results Storage**: Stores audit results in Supabase `seo_audits` table
+- **Automated Fixes**: Can automatically apply generated SEO content to products
+
+### Environment Variables
+
+Add these to your `.env.local` file:
+
+```bash
+# OpenCart Database Configuration
+OPENCART_DB_HOST=localhost
+OPENCART_DB_PORT=3306
+OPENCART_DB_USER=your_opencart_db_user
+OPENCART_DB_PASSWORD=your_opencart_db_password
+OPENCART_DB_NAME=your_opencart_db_name
+OPENCART_BASE_URL=https://your-opencart-store.com
+
+# Anthropic API Configuration
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Image Analysis API Configuration (Optional)
+IMAGE_ANALYSIS_API_URL=https://your-image-analysis-api.com/analyze
+IMAGE_ANALYSIS_API_KEY=your_image_analysis_api_key
+```
+
+### Usage
+
+#### 1. Audit Products
+
+```typescript
+import { auditProductsSEO } from '@/services/agents/seo-agent'
+
+// Audit all active products (limit 100)
+const result = await auditProductsSEO()
+
+// Audit specific products
+const result = await auditProductsSEO([1, 2, 3, 4, 5])
+
+// Audit with custom limit
+const result = await auditProductsSEO(undefined, 50)
+```
+
+#### 2. Store Audit Results
+
+```typescript
+import { storeAuditResults } from '@/services/agents/seo-agent'
+
+const auditIds = await storeAuditResults(audits, 'content')
+```
+
+#### 3. Generate and Apply SEO Fixes
+
+```typescript
+import { generateAndApplySEOFixes } from '@/services/agents/seo-agent'
+
+// Generate SEO content without applying
+const result = await generateAndApplySEOFixes(123, false)
+
+// Generate and apply SEO content
+const result = await generateAndApplySEOFixes(123, true)
+```
+
+#### 4. Run Full Audit with Storage
+
+```typescript
+import { runFullSEOAudit } from '@/services/agents/seo-agent'
+
+const result = await runFullSEOAudit()
+// Returns: { audits, summary, stored_audit_ids }
+```
+
+### Audit Scoring
+
+Products are scored from 0-100 based on:
+
+- **Missing Description** (-40 points)
+- **Short Description** (-30 points)
+- **Missing Main Image** (-30 points)
+- **Missing Meta Title** (-15 points)
+- **Missing Meta Description** (-15 points)
+- **No Additional Images** (-15 points)
+- **Suboptimal Meta Title Length** (-10 points)
+- **Suboptimal Meta Description Length** (-10 points)
+- **Missing Meta Keywords** (-10 points)
+- **Poor Image Quality** (variable penalty)
+- **Few Images** (-5 points)
+
+### Issue Severity Levels
+
+- **Critical**: Major SEO problems that must be fixed (e.g., missing description, no images)
+- **High**: Important issues affecting SEO performance (e.g., missing meta tags, short content)
+- **Medium**: Optimization opportunities (e.g., suboptimal meta tag lengths)
+- **Low**: Minor improvements (e.g., could use more images)
+
+### Audit Result Structure
+
+```typescript
+{
+  product_id: number
+  product_name: string
+  sku: string
+  score: number // 0-100
+  issues: [
+    {
+      type: string
+      severity: 'critical' | 'high' | 'medium' | 'low'
+      field: string
+      message: string
+      current_value?: string
+    }
+  ]
+  recommendations: [
+    {
+      type: 'content' | 'seo' | 'media'
+      priority: 'high' | 'medium' | 'low'
+      action: string
+      details: string
+      suggested_content?: string
+    }
+  ]
+  image_analysis?: {
+    url: string
+    quality_score: number
+    width?: number
+    height?: number
+    format?: string
+    size_kb?: number
+    issues: string[]
+    recommendations: string[]
+  }
+}
+```
+
+### Database Schema
+
+The service uses the `seo_audits` table in Supabase:
+
+```sql
+CREATE TABLE seo_audits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    url TEXT NOT NULL,
+    audit_type TEXT NOT NULL CHECK (audit_type IN ('full_site', 'page', 'technical', 'content', 'backlinks')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
+    score INTEGER CHECK (score >= 0 AND score <= 100),
+    issues_found JSONB DEFAULT '[]'::jsonb,
+    recommendations JSONB DEFAULT '[]'::jsonb,
+    metrics JSONB DEFAULT '{}'::jsonb,
+    performed_by TEXT REFERENCES squad_agents(name) ON DELETE SET NULL,
+    completed_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### OpenCart Database Tables Used
+
+- `oc_product` - Main product data
+- `oc_product_description` - Product descriptions and meta tags (by language)
+- `oc_product_image` - Additional product images
+- `oc_category_description` - Category names for context
+- `oc_product_to_category` - Product-category relationships
+
+### SEO Content Generation
+
+The service uses Claude AI (claude-3-5-sonnet-20241022) to generate:
+
+1. **Product Description**: 200-300 words with natural keyword integration
+2. **Meta Title**: 50-60 characters optimized for search engines
+3. **Meta Description**: 150-160 characters with call-to-action
+4. **Meta Keywords**: 5-8 relevant keywords
+
+### Image Analysis
+
+When `IMAGE_ANALYSIS_API_URL` is configured, the service checks:
+
+- Image resolution (minimum 800x800px recommended)
+- File size (maximum 500KB recommended)
+- Image format (JPG, PNG, WebP preferred)
+- Image sharpness/quality
+
+### Error Handling
+
+All functions include comprehensive error handling and logging to `squad_messages` table:
+
+- Database connection errors
+- API failures (Claude, Image Analysis)
+- Product not found errors
+- Data validation errors
+
+All errors are logged with context for debugging.
+
+### Notes
+
+- The service assumes OpenCart database uses `oc_` table prefix
+- Language ID 1 is assumed to be the primary language
+- Only active products (status = 1) are audited
+- Image analysis is optional and gracefully degrades if not configured
+- Claude API calls include fallback to basic content if API fails
+
+---
+
 ## Environment Variables
 
 Required environment variables for all agents:
@@ -261,7 +484,7 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Anthropic Claude API (Required for both agents)
+# Anthropic Claude API (Required for all agents)
 ANTHROPIC_API_KEY=your_anthropic_api_key
 
 # Cron Security (Optional for social agent)
@@ -274,6 +497,18 @@ INSTAGRAM_ACCESS_TOKEN=your_token_here
 INSTAGRAM_USER_ID=your_user_id_here
 YOUTUBE_API_KEY=your_key_here
 LINKEDIN_ACCESS_TOKEN=your_token_here
+
+# SEO Agent Specific (OpenCart Database)
+OPENCART_DB_HOST=localhost
+OPENCART_DB_PORT=3306
+OPENCART_DB_USER=your_opencart_db_user
+OPENCART_DB_PASSWORD=your_opencart_db_password
+OPENCART_DB_NAME=your_opencart_db_name
+OPENCART_BASE_URL=https://your-opencart-store.com
+
+# SEO Agent Specific (Image Analysis - Optional)
+IMAGE_ANALYSIS_API_URL=https://your-image-analysis-api.com/analyze
+IMAGE_ANALYSIS_API_KEY=your_image_analysis_api_key
 ```
 
 ## Activity Logging
@@ -282,7 +517,7 @@ All agents log operations to `squad_messages` table with structured data:
 
 ```typescript
 {
-  from_agent: 'social' | 'marketing',
+  from_agent: 'social' | 'marketing' | 'seo',
   message: 'Operation description',
   data: {
     event_type: 'operation_type',
