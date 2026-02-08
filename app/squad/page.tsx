@@ -33,6 +33,7 @@ import { supabase } from '@/lib/supabase'
 import OrchestratorPanel from './components/OrchestratorPanel'
 import EmailAgentPanel from './components/EmailAgentPanel'
 import SocialAgentPanel from './components/SocialAgentPanel'
+import AdsAgentPanel from './components/AdsAgentPanel'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -476,7 +477,14 @@ export default function MissionControl() {
         )}
 
         {activeTab === 'ads' && (
-          <GoogleAdsTab campaigns={adCampaigns} formatTimeAgo={formatTimeAgo} />
+          <motion.div
+            key="ads"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <AdsAgentPanel />
+          </motion.div>
         )}
 
         {activeTab === 'seo' && (
@@ -676,73 +684,7 @@ function SocialMediaTab({ posts, formatTimeAgo }: { posts: SocialPost[], formatT
   )
 }
 
-// Google Ads Tab
-function GoogleAdsTab({ campaigns, formatTimeAgo }: { campaigns: AdCampaign[], formatTimeAgo: (date: string) => string }) {
-  return (
-    <motion.div
-      key="ads"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <BarChart3 className="text-green-400" />
-          Ad Campaigns
-        </h3>
-        <div className="space-y-4">
-          {campaigns.length > 0 ? campaigns.map((campaign) => (
-            <div key={campaign.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-white">{campaign.name}</h4>
-                  <p className="text-xs text-gray-400 mt-1">{campaign.platform}</p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-md border ${
-                  campaign.status === 'active' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
-                  campaign.status === 'paused' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
-                  'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                }`}>
-                  {campaign.status}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-3 border-t border-white/5">
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Budget</p>
-                  <p className="text-sm font-bold text-white flex items-center gap-1">
-                    <DollarSign size={12} />
-                    {campaign.budget_spent} / {campaign.budget_total || '∞'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Impressions</p>
-                  <p className="text-sm font-bold text-white flex items-center gap-1">
-                    <Eye size={12} />
-                    {campaign.performance_metrics.impressions.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Clicks</p>
-                  <p className="text-sm font-bold text-white flex items-center gap-1">
-                    <MousePointer size={12} />
-                    {campaign.performance_metrics.clicks.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">CTR</p>
-                  <p className="text-sm font-bold text-lime-400">{campaign.performance_metrics.ctr.toFixed(2)}%</p>
-                </div>
-              </div>
-            </div>
-          )) : (
-            <p className="text-gray-400 text-sm text-center py-8">No campaigns running</p>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
+
 
 // SEO Agent Tab
 function SeoAgentTab({ audits, formatTimeAgo }: { audits: SeoAudit[], formatTimeAgo: (date: string) => string }) {
