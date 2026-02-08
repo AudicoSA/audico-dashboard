@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'generate_post':
-        const { platform, keywords, scheduledFor, productQuery } = params
+        const { platform, keywords, scheduledFor, productQuery, generateVisual, visualType } = params
         if (!platform || !keywords) {
           return NextResponse.json(
             { error: 'platform and keywords are required' },
@@ -19,7 +19,9 @@ export async function POST(request: NextRequest) {
           platform,
           keywords,
           scheduledFor ? new Date(scheduledFor) : undefined,
-          productQuery
+          productQuery,
+          generateVisual,
+          visualType
         )
         const taskId = await socialAgent.createApprovalTask(postId)
         return NextResponse.json({ postId, taskId })
@@ -72,6 +74,54 @@ export async function POST(request: NextRequest) {
       case 'get_scheduled':
         const scheduledPosts = await socialAgent.getScheduledPosts()
         return NextResponse.json({ posts: scheduledPosts })
+
+      case 'generate_visual':
+        const { postId: generateVisualPostId, visualType: generateVisualType } = params
+        if (!generateVisualPostId) {
+          return NextResponse.json(
+            { error: 'postId is required' },
+            { status: 400 }
+          )
+        }
+        const generateResult = await socialAgent.generateVisualContent(
+          generateVisualPostId,
+          generateVisualType || 'infographic'
+        )
+        if (!generateResult.success) {
+          return NextResponse.json(
+            { error: generateResult.error },
+            { status: 500 }
+          )
+        }
+        return NextResponse.json({
+          success: true,
+          visualUrl: generateResult.visualUrl,
+          artifactId: generateResult.artifactId
+        })
+
+      case 'regenerate_visual':
+        const { postId: regeneratePostId, customPrompt } = params
+        if (!regeneratePostId) {
+          return NextResponse.json(
+            { error: 'postId is required' },
+            { status: 400 }
+          )
+        }
+        const regenerateResult = await socialAgent.regenerateVisual(
+          regeneratePostId,
+          customPrompt
+        )
+        if (!regenerateResult.success) {
+          return NextResponse.json(
+            { error: regenerateResult.error },
+            { status: 500 }
+          )
+        }
+        return NextResponse.json({
+          success: true,
+          visualUrl: regenerateResult.visualUrl,
+          artifactId: regenerateResult.artifactId
+        })
 
       default:
         return NextResponse.json(

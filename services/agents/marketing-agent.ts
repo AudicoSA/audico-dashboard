@@ -1,4 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
+import NotebookLMService, { NotebookSource } from '../integrations/notebooklm-service'
+import * as path from 'path'
+import * as fs from 'fs'
+import { randomUUID } from 'crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -747,6 +751,503 @@ ${influencer.metadata?.channel_url || influencer.metadata?.profile_url || ''}`
       acc[inf.platform] = (acc[inf.platform] || 0) + 1
       return acc
     }, {} as { [key: string]: number })
+  }
+
+  async generateNewsletterVisuals(newsletterDraftId: string): Promise<void> {
+    try {
+      const { data: draft, error: draftError } = await supabase
+        .from('newsletter_drafts')
+        .select('*')
+        .eq('id', newsletterDraftId)
+        .single()
+
+      if (draftError || !draft) {
+        throw new Error(`Newsletter draft not found: ${draftError?.message}`)
+      }
+
+      const trendingData = await this.getTrendingProductsFromSEO(15)
+      const resellerPricing = await this.calculateResellerPricing()
+
+      const notebookLM = new NotebookLMService()
+      const notebookTitle = `Newsletter Visual Assets - ${draft.title || 'Untitled'}`
+      const notebookPurpose = 'Generate visual assets for newsletter distribution'
+
+      const notebook = await notebookLM.createNotebook(notebookTitle, notebookPurpose)
+
+      const sources: NotebookSource[] = [
+        {
+          type: 'text',
+          content: `Newsletter Content:\n\nTitle: ${draft.title}\nSubject: ${draft.subject_line}\n\nContent:\n${draft.content || draft.html_content || ''}`,
+          title: 'Newsletter Draft',
+          metadata: { type: 'newsletter_content' }
+        }
+      ]
+
+      if (trendingData.length > 0) {
+        const trendingContent = trendingData.map((t: any) => 
+          `Keyword: ${t.keyword}\nMentions: ${t.mentions}\nVolume: ${t.total_volume}\nURLs: ${t.urls.join(', ')}`
+        ).join('\n\n')
+
+        sources.push({
+          type: 'text',
+          content: `SEO Insights & Trending Products:\n\n${trendingContent}`,
+          title: 'SEO Trending Data',
+          metadata: { type: 'seo_insights' }
+        })
+      }
+
+      if (resellerPricing.length > 0) {
+        const productData = resellerPricing.slice(0, 20).map(p => 
+          `Product: ${p.name}\nCategory: ${p.category || 'General'}\nRetail Price: R${p.price}\nReseller Price: R${p.reseller_price}\nMargin: ${p.margin}%`
+        ).join('\n\n---\n\n')
+
+        sources.push({
+          type: 'text',
+          content: `Product Catalog Data:\n\n${productData}`,
+          title: 'Product Pricing Information',
+          metadata: { type: 'product_catalog' }
+        })
+      }
+
+      await notebookLM.addSources(notebook.notebookId, sources)
+
+      const { data: notebookRecord } = await supabase
+        .from('notebooklm_notebooks')
+        .insert({
+          name: notebook.title,
+          notebook_id: notebook.notebookId,
+          purpose: notebook.purpose,
+          sources_count: sources.length,
+          status: 'active',
+          metadata: {
+            newsletter_draft_id: newsletterDraftId,
+            type: 'newsletter_visuals'
+          }
+        })
+        .select()
+        .single()
+
+      const visualAssets: Array<{ type: string; artifact_id: string; url: string }> = []
+
+      const slidePrompt = `Create a detailed presentation slide deck for reseller business owners showcasing the products and insights from this newsletter. 
+      
+Focus on:
+- Key product highlights with pricing and margins
+- Market trends and SEO insights
+- Business opportunities for resellers
+- Professional, business-focused design
+
+Target Audience: Business owners and resellers
+Format: Detailed, professional, data-driven`
+
+      const slidesArtifactId = await notebookLM.generateSlides(
+        notebook.notebookId,
+        slidePrompt,
+        'business owners'
+      )
+
+      const tempDir = path.join(process.cwd(), 'tmp')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+
+      const slidesTempPath = path.join(tempDir, `${slidesArtifactId}.pptx`)
+      const slidesDownload = await notebookLM.downloadArtifact(slidesArtifactId, slidesTempPath)
+
+      if (slidesDownload.success) {
+        const slidesBuffer = fs.readFileSync(slidesTempPath)
+        const slidesFileName = `newsletters/${newsletterDraftId}/slides-${randomUUID()}.pptx`
+        
+        const { error: slidesUploadError } = await supabase.storage
+          .from('marketing-assets')
+          .upload(slidesFileName, slidesBuffer, {
+            contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            upsert: false
+          })
+
+        if (!slidesUploadError) {
+          const { data: { publicUrl: slidesUrl } } = supabase.storage
+            .from('marketing-assets')
+            .getPublicUrl(slidesFileName)
+
+          visualAssets.push({
+            type: 'slide_deck',
+            artifact_id: slidesArtifactId,
+            url: slidesUrl
+          })
+
+          if (notebookRecord) {
+            await supabase
+              .from('notebooklm_artifacts')
+              .insert({
+                notebook_id: notebookRecord.id,
+                artifact_type: 'slide_deck',
+                storage_path: slidesFileName,
+                generation_prompt: slidePrompt,
+                status: 'completed',
+                metadata: {
+                  newsletter_draft_id: newsletterDraftId,
+                  audience: 'business owners',
+                  format: 'detailed',
+                  artifact_id: slidesArtifactId
+                }
+              })
+          }
+        }
+
+        fs.unlinkSync(slidesTempPath)
+      }
+
+      const infographicPrompt = `Create a social-ready infographic summarizing the key products featured in this newsletter.
+
+Requirements:
+- Highlight 3-5 top products with key features
+- Include trending keywords and SEO insights
+- Eye-catching, shareable design
+- Optimized for social media (landscape format)
+- Clear call-to-action
+
+Make it visually compelling and suitable for sharing on social media platforms.`
+
+      const infographicArtifactId = await notebookLM.generateInfographic(
+        notebook.notebookId,
+        infographicPrompt,
+        'landscape'
+      )
+
+      const infographicTempPath = path.join(tempDir, `${infographicArtifactId}.png`)
+      const infographicDownload = await notebookLM.downloadArtifact(infographicArtifactId, infographicTempPath)
+
+      if (infographicDownload.success) {
+        const infographicBuffer = fs.readFileSync(infographicTempPath)
+        const infographicFileName = `newsletters/${newsletterDraftId}/infographic-${randomUUID()}.png`
+        
+        const { error: infographicUploadError } = await supabase.storage
+          .from('marketing-assets')
+          .upload(infographicFileName, infographicBuffer, {
+            contentType: 'image/png',
+            upsert: false
+          })
+
+        if (!infographicUploadError) {
+          const { data: { publicUrl: infographicUrl } } = supabase.storage
+            .from('marketing-assets')
+            .getPublicUrl(infographicFileName)
+
+          visualAssets.push({
+            type: 'infographic',
+            artifact_id: infographicArtifactId,
+            url: infographicUrl
+          })
+
+          if (notebookRecord) {
+            await supabase
+              .from('notebooklm_artifacts')
+              .insert({
+                notebook_id: notebookRecord.id,
+                artifact_type: 'infographic',
+                storage_path: infographicFileName,
+                generation_prompt: infographicPrompt,
+                status: 'completed',
+                metadata: {
+                  newsletter_draft_id: newsletterDraftId,
+                  orientation: 'landscape',
+                  format: 'social_ready',
+                  artifact_id: infographicArtifactId
+                }
+              })
+          }
+        }
+
+        fs.unlinkSync(infographicTempPath)
+      }
+
+      const updatedMetadata = {
+        ...draft.metadata,
+        notebooklm_notebook_id: notebook.notebookId,
+        visual_assets: visualAssets,
+        visuals_generated_at: new Date().toISOString()
+      }
+
+      await supabase
+        .from('newsletter_drafts')
+        .update({ metadata: updatedMetadata })
+        .eq('id', newsletterDraftId)
+
+      await this.logActivity(
+        'newsletter_visuals_generated',
+        `Generated visual assets for newsletter: ${draft.title}`,
+        {
+          newsletter_draft_id: newsletterDraftId,
+          notebook_id: notebook.notebookId,
+          assets_count: visualAssets.length,
+          asset_types: visualAssets.map(a => a.type)
+        }
+      )
+    } catch (error) {
+      console.error('Error generating newsletter visuals:', error)
+      throw error
+    }
+  }
+
+  async generateResellerKit(resellerId: string): Promise<void> {
+    try {
+      const { data: reseller, error: resellerError } = await supabase
+        .from('approved_resellers')
+        .select('*')
+        .eq('id', resellerId)
+        .single()
+
+      if (resellerError || !reseller) {
+        throw new Error(`Approved reseller not found: ${resellerError?.message}`)
+      }
+
+      const resellerPricing = await this.calculateResellerPricing()
+
+      const { data: resellerOrders } = await supabase
+        .from('reseller_orders')
+        .select('*')
+        .eq('reseller_id', resellerId)
+        .eq('status', 'completed')
+        .order('order_date', { ascending: false })
+        .limit(10)
+
+      const orderHistory = resellerOrders || []
+      const frequentlyOrderedProductIds = new Set<string>()
+      
+      orderHistory.forEach(order => {
+        const items = order.items || []
+        items.forEach((item: any) => {
+          if (item.product_id) {
+            frequentlyOrderedProductIds.add(item.product_id)
+          }
+        })
+      })
+
+      let catalogProducts = resellerPricing
+
+      if (frequentlyOrderedProductIds.size > 0) {
+        catalogProducts = resellerPricing.filter(p => 
+          frequentlyOrderedProductIds.has(p.id)
+        )
+        
+        if (catalogProducts.length < 10) {
+          const additionalProducts = resellerPricing
+            .filter(p => !frequentlyOrderedProductIds.has(p.id))
+            .slice(0, 10 - catalogProducts.length)
+          catalogProducts = [...catalogProducts, ...additionalProducts]
+        }
+      }
+
+      const notebookLM = new NotebookLMService()
+      const notebookTitle = `Reseller Kit - ${reseller.company_name}`
+      const notebookPurpose = `Comprehensive sales kit for reseller ${reseller.company_name}`
+
+      const notebook = await notebookLM.createNotebook(notebookTitle, notebookPurpose)
+
+      const sources: NotebookSource[] = [
+        {
+          type: 'text',
+          content: `Reseller Information:
+
+Company: ${reseller.company_name}
+Contact: ${reseller.contact_name}
+Email: ${reseller.contact_email}
+Discount Tier: ${reseller.discount_tier}
+Commission Rate: ${reseller.commission_rate}%
+Total Orders: ${reseller.total_orders}
+Total Revenue: R${reseller.total_revenue || 0}
+Status: ${reseller.status}`,
+          title: 'Reseller Profile',
+          metadata: { type: 'reseller_info' }
+        }
+      ]
+
+      const catalogContent = catalogProducts.map(p => 
+        `Product: ${p.name}
+Category: ${p.category || 'General'}
+Brand: ${p.sku || 'N/A'}
+Retail Price: R${p.price}
+Your Reseller Price: R${p.reseller_price}
+Your Margin: ${p.margin}%
+Cost Savings: R${(p.price - p.reseller_price).toFixed(2)}
+
+${p.metadata?.description || 'Premium quality product'}
+`
+      ).join('\n---\n\n')
+
+      sources.push({
+        type: 'text',
+        content: `Product Catalog:\n\n${catalogContent}`,
+        title: 'Approved Product Catalog',
+        metadata: { type: 'product_catalog' }
+      })
+
+      const tierInfo = `Pricing Tier Information:
+
+Current Tier: ${reseller.discount_tier.toUpperCase()}
+
+STANDARD TIER:
+- Base discount: 10% off retail
+- Commission: 10%
+- Minimum order: None
+
+PREMIUM TIER:
+- Enhanced discount: 15% off retail
+- Commission: 12%
+- Minimum order: R10,000/month
+- Priority support
+
+PLATINUM TIER:
+- Maximum discount: 20% off retail
+- Commission: 15%
+- Minimum order: R25,000/month
+- Dedicated account manager
+- Marketing support
+- Early access to new products`
+
+      sources.push({
+        type: 'text',
+        content: tierInfo,
+        title: 'Pricing Tier Structure',
+        metadata: { type: 'pricing_tiers' }
+      })
+
+      await notebookLM.addSources(notebook.notebookId, sources)
+
+      const { data: notebookRecord } = await supabase
+        .from('notebooklm_notebooks')
+        .insert({
+          name: notebook.title,
+          notebook_id: notebook.notebookId,
+          purpose: notebook.purpose,
+          sources_count: sources.length,
+          status: 'active',
+          metadata: {
+            reseller_id: resellerId,
+            type: 'reseller_kit'
+          }
+        })
+        .select()
+        .single()
+
+      const slidePrompt = `Create a comprehensive presentation slide deck for ${reseller.company_name} showcasing their approved product catalog with pricing tier visualization.
+
+Include:
+1. Cover slide with reseller information
+2. Pricing tier overview with comparison table
+3. Current tier benefits (${reseller.discount_tier})
+4. Product catalog slides with:
+   - Product name and category
+   - Retail vs Reseller pricing
+   - Margin calculations
+   - Key features
+5. Upgrade path visualization (how to reach next tier)
+6. Order history summary
+7. Contact and support information
+
+Design: Professional, clean, business-focused
+Audience: Reseller sales team and management
+Format: Detailed with clear pricing visualizations`
+
+      const slidesArtifactId = await notebookLM.generateSlides(
+        notebook.notebookId,
+        slidePrompt,
+        'business owners'
+      )
+
+      const tempDir = path.join(process.cwd(), 'tmp')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+
+      const slidesTempPath = path.join(tempDir, `${slidesArtifactId}.pptx`)
+      const slidesDownload = await notebookLM.downloadArtifact(slidesArtifactId, slidesTempPath)
+
+      if (slidesDownload.success) {
+        const slidesBuffer = fs.readFileSync(slidesTempPath)
+        const slidesFileName = `resellers/${resellerId}/catalog-${randomUUID()}.pptx`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('marketing-assets')
+          .upload(slidesFileName, slidesBuffer, {
+            contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            upsert: false
+          })
+
+        if (!uploadError) {
+          const { data: { publicUrl: slidesUrl } } = supabase.storage
+            .from('marketing-assets')
+            .getPublicUrl(slidesFileName)
+
+          if (notebookRecord) {
+            await supabase
+              .from('notebooklm_artifacts')
+              .insert({
+                notebook_id: notebookRecord.id,
+                artifact_type: 'slide_deck',
+                storage_path: slidesFileName,
+                generation_prompt: slidePrompt,
+                status: 'completed',
+                metadata: {
+                  reseller_id: resellerId,
+                  company_name: reseller.company_name,
+                  discount_tier: reseller.discount_tier,
+                  product_count: catalogProducts.length,
+                  artifact_id: slidesArtifactId
+                }
+              })
+          }
+
+          const updatedMetadata = {
+            ...reseller.metadata,
+            reseller_kit: {
+              notebook_id: notebook.notebookId,
+              slide_deck_url: slidesUrl,
+              artifact_id: slidesArtifactId,
+              generated_at: new Date().toISOString(),
+              product_count: catalogProducts.length
+            }
+          }
+
+          await supabase
+            .from('approved_resellers')
+            .update({ metadata: updatedMetadata })
+            .eq('id', resellerId)
+
+          await supabase
+            .from('squad_tasks')
+            .insert({
+              title: `Reseller Kit Generated - ${reseller.company_name}`,
+              description: `Comprehensive slide deck created for ${reseller.company_name} with ${catalogProducts.length} products and pricing tier visualization.`,
+              status: 'completed',
+              assigned_agent: this.agentName,
+              priority: 'medium',
+              mentions_kenny: false,
+              deliverable_url: slidesUrl
+            })
+
+          await this.logActivity(
+            'reseller_kit_generated',
+            `Generated reseller kit for ${reseller.company_name}`,
+            {
+              reseller_id: resellerId,
+              company_name: reseller.company_name,
+              notebook_id: notebook.notebookId,
+              artifact_id: slidesArtifactId,
+              product_count: catalogProducts.length,
+              discount_tier: reseller.discount_tier,
+              slide_deck_url: slidesUrl
+            }
+          )
+        }
+
+        fs.unlinkSync(slidesTempPath)
+      }
+    } catch (error) {
+      console.error('Error generating reseller kit:', error)
+      throw error
+    }
   }
 
   private async logActivity(eventType: string, message: string, context: any = {}): Promise<void> {

@@ -32,6 +32,7 @@ export interface SocialPost {
   scheduled_for: string | null
   published_at: string | null
   post_url: string | null
+  visual_content_url: string | null
   engagement: {
     likes: number
     comments: number
@@ -44,7 +45,7 @@ export interface SocialPost {
 }
 
 export interface SocialAgentRequest {
-  action: 'generate_post' | 'approve_post' | 'reject_post' | 'publish_post' | 'generate_bulk' | 'schedule_weekly' | 'get_scheduled'
+  action: 'generate_post' | 'approve_post' | 'reject_post' | 'publish_post' | 'generate_bulk' | 'schedule_weekly' | 'get_scheduled' | 'generate_visual' | 'regenerate_visual'
   platform?: 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'tiktok' | 'youtube'
   keywords?: string[]
   scheduledFor?: string
@@ -52,6 +53,9 @@ export interface SocialAgentRequest {
   postId?: string
   reason?: string
   count?: number
+  generateVisual?: boolean
+  visualType?: 'infographic' | 'slide_deck' | 'video_overview'
+  customPrompt?: string
 }
 
 export interface SocialAgentResponse {
@@ -61,6 +65,8 @@ export interface SocialAgentResponse {
   postIds?: string[]
   count?: number
   posts?: SocialPost[]
+  visualUrl?: string
+  artifactId?: string
   error?: string
 }
 

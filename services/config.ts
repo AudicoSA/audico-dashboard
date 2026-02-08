@@ -14,7 +14,9 @@ export const AGENT_SCHEDULES = {
   EMAIL_RESPOND: '*/15 * * * *',
   STATUS_UPDATE: '* * * * *',
   CONFLICT_CHECK: '*/2 * * * *',
-  TOKEN_MONITOR: '*/5 * * * *'
+  TOKEN_MONITOR: '*/5 * * * *',
+  SOCIAL_VISUALS_DAILY: '0 9 * * *',
+  NEWSLETTER_ASSETS_WEEKLY: '0 10 * * 1'
 }
 
 export const AGENT_TOKEN_ESTIMATES = {
@@ -23,7 +25,10 @@ export const AGENT_TOKEN_ESTIMATES = {
   email_respond: 600,
   quote_chat: 800,
   seo_audit: 1000,
-  content_generation: 1500
+  content_generation: 1500,
+  visual_content_generation: 2000,
+  newsletter_assets: 3000,
+  reseller_kit: 2500
 }
 
 export const AGENT_PRIORITIES = {

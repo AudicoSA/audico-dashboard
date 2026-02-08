@@ -7,6 +7,11 @@ import {
   TOKEN_WARNING_THRESHOLDS,
   AGENT_TIMEOUT_MINUTES 
 } from './config'
+import { 
+  generateWeeklySocialVisuals, 
+  generateMonthlyNewsletterAssets,
+  generateResellerOnboardingKit 
+} from './workflows/visual-content-automation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -95,6 +100,18 @@ class AgentOrchestrator {
 
     this.scheduledJobs.set('token_monitor', cron.schedule(AGENT_SCHEDULES.TOKEN_MONITOR, async () => {
       await this.monitorTokenUsage()
+    }))
+
+    this.scheduledJobs.set('social_visuals_daily', cron.schedule(AGENT_SCHEDULES.SOCIAL_VISUALS_DAILY, async () => {
+      await this.executeVisualWorkflow('social_visuals')
+    }))
+
+    this.scheduledJobs.set('newsletter_assets_weekly', cron.schedule(AGENT_SCHEDULES.NEWSLETTER_ASSETS_WEEKLY, async () => {
+      await this.executeVisualWorkflow('newsletter_assets')
+    }))
+
+    this.scheduledJobs.set('reseller_kit_check', cron.schedule('0 */6 * * *', async () => {
+      await this.checkNewlyApprovedResellers()
     }))
 
     await this.logMessage('orchestrator', 'Scheduled jobs configured', {
@@ -385,6 +402,117 @@ class AgentOrchestrator {
     
     if (error) {
       console.error(`Failed to update agent status for ${agentName}:`, error)
+    }
+  }
+
+  private async executeVisualWorkflow(workflowType: 'social_visuals' | 'newsletter_assets') {
+    if (!this.isRunning) return
+
+    const tokenEstimate = workflowType === 'social_visuals' ? 2000 : 3000
+    const canExecute = await this.checkTokenBudget('visual_automation', tokenEstimate)
+    
+    if (!canExecute) {
+      await this.logMessage('orchestrator', `Visual workflow blocked: insufficient tokens for ${workflowType}`, {
+        workflow: workflowType,
+        action: 'token_limit_reached'
+      })
+      return
+    }
+
+    await this.updateAgentStatus('visual_automation', 'active')
+
+    try {
+      let result
+
+      if (workflowType === 'social_visuals') {
+        result = await generateWeeklySocialVisuals()
+        await this.logMessage('visual_automation', 'Completed weekly social visuals workflow', {
+          action: 'workflow_completed',
+          result
+        })
+      } else if (workflowType === 'newsletter_assets') {
+        result = await generateMonthlyNewsletterAssets()
+        await this.logMessage('visual_automation', 'Completed monthly newsletter assets workflow', {
+          action: 'workflow_completed',
+          result
+        })
+      }
+
+      await this.trackTokenUsage('visual_automation', tokenEstimate * 0.8)
+    } catch (error: any) {
+      await this.logMessage('visual_automation', `Error executing ${workflowType} workflow`, {
+        action: workflowType,
+        error: error.message
+      })
+    } finally {
+      await this.updateAgentStatus('visual_automation', 'idle')
+    }
+  }
+
+  private async checkNewlyApprovedResellers() {
+    try {
+      const { data: resellers, error } = await supabase
+        .from('approved_resellers')
+        .select('*')
+        .eq('status', 'active')
+        .is('metadata->reseller_kit->slide_deck_url', null)
+        .limit(5)
+
+      if (error) {
+        console.error('Error fetching newly approved resellers:', error)
+        return
+      }
+
+      if (!resellers || resellers.length === 0) {
+        return
+      }
+
+      await this.logMessage('orchestrator', `Found ${resellers.length} resellers needing onboarding kits`, {
+        action: 'reseller_kit_check',
+        count: resellers.length,
+        reseller_ids: resellers.map(r => r.id)
+      })
+
+      for (const reseller of resellers) {
+        await this.triggerResellerKitGeneration(reseller.id)
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    } catch (error) {
+      console.error('Error checking newly approved resellers:', error)
+    }
+  }
+
+  async triggerResellerKitGeneration(resellerId: string): Promise<void> {
+    const canExecute = await this.checkTokenBudget('visual_automation', 2500)
+    
+    if (!canExecute) {
+      await this.logMessage('orchestrator', `Reseller kit generation blocked: insufficient tokens`, {
+        reseller_id: resellerId,
+        action: 'token_limit_reached'
+      })
+      return
+    }
+
+    await this.updateAgentStatus('visual_automation', 'active')
+
+    try {
+      const result = await generateResellerOnboardingKit(resellerId)
+      
+      await this.logMessage('visual_automation', `Completed reseller kit generation`, {
+        action: 'reseller_kit_generated',
+        reseller_id: resellerId,
+        result
+      })
+
+      await this.trackTokenUsage('visual_automation', 2000)
+    } catch (error: any) {
+      await this.logMessage('visual_automation', `Error generating reseller kit`, {
+        action: 'reseller_kit_error',
+        reseller_id: resellerId,
+        error: error.message
+      })
+    } finally {
+      await this.updateAgentStatus('visual_automation', 'idle')
     }
   }
 
