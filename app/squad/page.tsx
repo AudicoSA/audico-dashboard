@@ -12,8 +12,24 @@ import {
   MessageSquare,
   ArrowRight,
   ArrowLeft,
-  Zap
+  Zap,
+  Play,
+  Square,
+  TrendingUp,
+  Mail,
+  Twitter,
+  BarChart3,
+  Search,
+  Megaphone,
+  Calendar,
+  Activity,
+  DollarSign,
+  Eye,
+  MousePointer,
+  FileText,
+  Settings
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -51,37 +67,157 @@ interface ActivityItem {
   created_at: string
 }
 
+interface OrchestratorStatus {
+  tokenBudget: {
+    total: number
+    used: number
+    remaining: number
+    agentUsage: Record<string, number>
+  }
+  activeOperations: any[]
+}
+
+interface EmailClassification {
+  id: string
+  email_id: string
+  sender: string
+  subject: string
+  classification: string
+  priority: string
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+interface SocialPost {
+  id: string
+  platform: string
+  content: string
+  status: string
+  scheduled_for: string | null
+  published_at: string | null
+  engagement: {
+    likes: number
+    comments: number
+    shares: number
+  }
+  created_at: string
+}
+
+interface AdCampaign {
+  id: string
+  name: string
+  platform: string
+  status: string
+  budget_total: number | null
+  budget_spent: number
+  performance_metrics: {
+    impressions: number
+    clicks: number
+    conversions: number
+    ctr: number
+    cpc: number
+    roas: number
+  }
+  created_at: string
+}
+
+interface SeoAudit {
+  id: string
+  url: string
+  audit_type: string
+  status: string
+  score: number | null
+  issues_found: any[]
+  recommendations: any[]
+  created_at: string
+}
+
+interface ResellerApplication {
+  id: string
+  company_name: string
+  contact_name: string
+  contact_email: string
+  status: string
+  created_at: string
+}
+
+type TabType = 'overview' | 'orchestrator' | 'email' | 'social' | 'ads' | 'seo' | 'marketing'
+
 // Mock data for initial display
 const MOCK_TASKS: Task[] = [
   { id: '1', title: 'Process pending orders from today', description: 'Review and confirm all new orders', status: 'in_progress', assigned_agent: 'mpho', priority: 'high', mentions_kenny: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
   { id: '2', title: 'Stock audit for Sonos products', description: 'Verify inventory levels match Supabase', status: 'new', assigned_agent: 'thandi', priority: 'medium', mentions_kenny: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
   { id: '3', title: 'Customer complaint - Delivery delay', description: 'Order #45892 - Customer escalated', status: 'new', assigned_agent: 'sizwe', priority: 'urgent', mentions_kenny: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: '4', title: 'Write blog post about home automation', description: 'SEO-optimized content for blog', status: 'in_progress', assigned_agent: 'lerato', priority: 'low', mentions_kenny: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: '5', title: 'Optimize product page meta descriptions', description: 'Improve SEO for top 50 products', status: 'completed', assigned_agent: 'vusi', priority: 'medium', mentions_kenny: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: '6', title: 'Send newsletter to subscribers', description: 'February promo announcement', status: 'new', assigned_agent: 'naledi', priority: 'high', mentions_kenny: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
 ]
 
 const MOCK_ACTIVITY: ActivityItem[] = [
   { id: '1', from_agent: 'jarvis', message: 'Assigned delivery complaint to Sizwe for immediate handling', created_at: new Date(Date.now() - 5 * 60000).toISOString() },
-  { id: '2', from_agent: 'mpho', to_agent: 'thandi', message: 'Need stock confirmation for order #45910 - 2x Sonos Era 300', task_id: '1', created_at: new Date(Date.now() - 15 * 60000).toISOString() },
-  { id: '3', from_agent: 'thandi', to_agent: 'mpho', message: 'Confirmed - Stock available, proceed with order', created_at: new Date(Date.now() - 12 * 60000).toISOString() },
-  { id: '4', from_agent: 'lerato', message: 'Draft blog post ready for review - "Top 5 Smart Home Speakers 2026"', task_id: '4', created_at: new Date(Date.now() - 30 * 60000).toISOString() },
-  { id: '5', from_agent: 'vusi', message: 'Completed meta descriptions for 50 products - avg 15% improvement expected', task_id: '5', created_at: new Date(Date.now() - 45 * 60000).toISOString() },
-  { id: '6', from_agent: 'sizwe', message: '@Kenny - Customer threatening chargeback on order #45892, need approval to offer 10% discount', created_at: new Date(Date.now() - 2 * 60000).toISOString() },
 ]
 
 export default function MissionControl() {
+  const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS)
   const [activity, setActivity] = useState<ActivityItem[]>(MOCK_ACTIVITY)
   const [filterAgent, setFilterAgent] = useState<string>('all')
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [orchestratorStatus, setOrchestratorStatus] = useState<OrchestratorStatus | null>(null)
+  const [emails, setEmails] = useState<EmailClassification[]>([])
+  const [socialPosts, setSocialPosts] = useState<SocialPost[]>([])
+  const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([])
+  const [seoAudits, setSeoAudits] = useState<SeoAudit[]>([])
+  const [resellerApps, setResellerApps] = useState<ResellerApplication[]>([])
 
-  // Fetch real data
+  // Fetch initial data
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 30000) // Poll every 30s
-    return () => clearInterval(interval)
+  }, [])
+
+  // Real-time subscriptions for squad_messages, squad_tasks, and squad_agents
+  useEffect(() => {
+    const messagesChannel = supabase
+      .channel('squad_messages_changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'squad_messages' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setActivity(prev => [payload.new as ActivityItem, ...prev].slice(0, 50))
+          }
+        }
+      )
+      .subscribe()
+
+    const tasksChannel = supabase
+      .channel('squad_tasks_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'squad_tasks' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setTasks(prev => [payload.new as Task, ...prev])
+          } else if (payload.eventType === 'UPDATE') {
+            setTasks(prev => prev.map(t => t.id === payload.new.id ? payload.new as Task : t))
+          } else if (payload.eventType === 'DELETE') {
+            setTasks(prev => prev.filter(t => t.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe()
+
+    const agentsChannel = supabase
+      .channel('squad_agents_changes')
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'squad_agents' },
+        () => {
+          fetchOrchestratorStatus()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(messagesChannel)
+      supabase.removeChannel(tasksChannel)
+      supabase.removeChannel(agentsChannel)
+    }
   }, [])
 
   const fetchData = async () => {
@@ -91,13 +227,130 @@ export default function MissionControl() {
         const data = await res.json()
         if (data.tasks?.length) setTasks(data.tasks)
         if (data.activity?.length) setActivity(data.activity)
+        if (data.orchestrator) setOrchestratorStatus(data.orchestrator)
       }
     } catch (err) {
       console.log('Using mock data - API not connected yet')
     }
   }
 
-  // Filter tasks (handle both lowercase id and capitalized name)
+  const fetchOrchestratorStatus = async () => {
+    try {
+      const res = await fetch('/api/squad?action=orchestrator-status')
+      if (res.ok) {
+        const data = await res.json()
+        setOrchestratorStatus(data)
+      }
+    } catch (err) {
+      console.log('Could not fetch orchestrator status')
+    }
+  }
+
+  const fetchEmails = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_classifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (data) setEmails(data)
+    } catch (err) {
+      console.log('Could not fetch emails')
+    }
+  }
+
+  const fetchSocialPosts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('social_posts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (data) setSocialPosts(data)
+    } catch (err) {
+      console.log('Could not fetch social posts')
+    }
+  }
+
+  const fetchAdCampaigns = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ad_campaigns')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (data) setAdCampaigns(data)
+    } catch (err) {
+      console.log('Could not fetch ad campaigns')
+    }
+  }
+
+  const fetchSeoAudits = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('seo_audits')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (data) setSeoAudits(data)
+    } catch (err) {
+      console.log('Could not fetch SEO audits')
+    }
+  }
+
+  const fetchResellerApps = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reseller_applications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (data) setResellerApps(data)
+    } catch (err) {
+      console.log('Could not fetch reseller applications')
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'email') fetchEmails()
+    if (activeTab === 'social') fetchSocialPosts()
+    if (activeTab === 'ads') fetchAdCampaigns()
+    if (activeTab === 'seo') fetchSeoAudits()
+    if (activeTab === 'marketing') fetchResellerApps()
+    if (activeTab === 'orchestrator') fetchOrchestratorStatus()
+  }, [activeTab])
+
+  const handleOrchestratorInit = async () => {
+    try {
+      const res = await fetch('/api/squad', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'orchestrator-init' })
+      })
+      if (res.ok) {
+        fetchOrchestratorStatus()
+      }
+    } catch (err) {
+      console.log('Failed to initialize orchestrator')
+    }
+  }
+
+  const handleOrchestratorShutdown = async () => {
+    try {
+      const res = await fetch('/api/squad', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'orchestrator-shutdown' })
+      })
+      if (res.ok) {
+        fetchOrchestratorStatus()
+      }
+    } catch (err) {
+      console.log('Failed to shutdown orchestrator')
+    }
+  }
+
+  // Filter tasks
   const filteredTasks = filterAgent === 'all' 
     ? tasks 
     : tasks.filter(t => t.assigned_agent.toLowerCase() === filterAgent.toLowerCase())
@@ -115,7 +368,16 @@ export default function MissionControl() {
     setTasks(prev => prev.map(t => 
       t.id === taskId ? { ...t, status: newStatus, updated_at: new Date().toISOString() } : t
     ))
-    // TODO: POST to API to persist
+    
+    try {
+      await fetch('/api/squad', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, status: newStatus })
+      })
+    } catch (err) {
+      console.log('Failed to update task')
+    }
   }
 
   const getAgent = (id: string) => AGENTS.find(a => a.id === id) || AGENTS[0]
@@ -138,6 +400,16 @@ export default function MissionControl() {
     return `${Math.floor(hours / 24)}d ago`
   }
 
+  const tabs = [
+    { id: 'overview' as TabType, name: 'Overview', icon: Users },
+    { id: 'orchestrator' as TabType, name: 'Orchestrator', icon: Settings },
+    { id: 'email' as TabType, name: 'Email Agent', icon: Mail },
+    { id: 'social' as TabType, name: 'Social Media', icon: Twitter },
+    { id: 'ads' as TabType, name: 'Google Ads', icon: BarChart3 },
+    { id: 'seo' as TabType, name: 'SEO', icon: Search },
+    { id: 'marketing' as TabType, name: 'Marketing', icon: Megaphone },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -153,30 +425,52 @@ export default function MissionControl() {
           </h2>
           <p className="text-gray-400 mt-1">Manage and coordinate your AI agent squad</p>
         </div>
-        <div className="flex gap-3">
-          {/* Agent Filter */}
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-            <select 
-              value={filterAgent}
-              onChange={(e) => setFilterAgent(e.target.value)}
-              className="bg-[#1c1c1c] border border-white/5 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-lime-500/50 appearance-none cursor-pointer"
+        {activeTab === 'overview' && (
+          <div className="flex gap-3">
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+              <select 
+                value={filterAgent}
+                onChange={(e) => setFilterAgent(e.target.value)}
+                className="bg-[#1c1c1c] border border-white/5 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-lime-500/50 appearance-none cursor-pointer"
+              >
+                <option value="all">All Agents</option>
+                {AGENTS.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
+                ))}
+              </select>
+            </div>
+            <button 
+              onClick={() => setShowNewTaskModal(true)}
+              className="px-4 py-2 bg-lime-400 hover:bg-lime-500 text-black text-sm font-bold rounded-xl transition-colors shadow-[0_0_15px_rgba(163,230,53,0.3)] flex items-center gap-2"
             >
-              <option value="all">All Agents</option>
-              {AGENTS.map(a => (
-                <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
-              ))}
-            </select>
+              <Plus size={18} />
+              New Task
+            </button>
           </div>
-          <button 
-            onClick={() => setShowNewTaskModal(true)}
-            className="px-4 py-2 bg-lime-400 hover:bg-lime-500 text-black text-sm font-bold rounded-xl transition-colors shadow-[0_0_15px_rgba(163,230,53,0.3)] flex items-center gap-2"
-          >
-            <Plus size={18} />
-            New Task
-          </button>
-        </div>
+        )}
       </motion.div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap transition-all ${
+                activeTab === tab.id
+                  ? 'bg-lime-400 text-black'
+                  : 'bg-[#1c1c1c] text-gray-400 hover:text-white border border-white/5'
+              }`}
+            >
+              <Icon size={16} />
+              {tab.name}
+            </button>
+          )
+        })}
+      </div>
 
       {/* Mentions Kenny Section */}
       {kennyMentions.length > 0 && (
@@ -210,105 +504,49 @@ export default function MissionControl() {
         </motion.div>
       )}
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Kanban Board - 3 columns */}
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* New Tasks Column */}
-          <KanbanColumn 
-            title="New Tasks" 
-            icon={<Clock className="text-blue-400" size={18} />}
-            count={newTasks.length}
-            color="blue"
-          >
-            {newTasks.map(task => (
-              <TaskCard 
-                key={task.id}
-                task={task}
-                agent={getAgent(task.assigned_agent)}
-                priorityColor={getPriorityColor(task.priority)}
-                timeAgo={formatTimeAgo(task.created_at)}
-                onMoveLeft={null}
-                onMoveRight={() => moveTask(task.id, 'in_progress')}
-              />
-            ))}
-          </KanbanColumn>
+      {/* Tab Content */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'overview' && (
+          <OverviewTab
+            newTasks={newTasks}
+            inProgressTasks={inProgressTasks}
+            completedTasks={completedTasks}
+            activity={activity}
+            moveTask={moveTask}
+            getAgent={getAgent}
+            getPriorityColor={getPriorityColor}
+            formatTimeAgo={formatTimeAgo}
+          />
+        )}
 
-          {/* In Progress Column */}
-          <KanbanColumn 
-            title="In Progress" 
-            icon={<Zap className="text-yellow-400" size={18} />}
-            count={inProgressTasks.length}
-            color="yellow"
-          >
-            {inProgressTasks.map(task => (
-              <TaskCard 
-                key={task.id}
-                task={task}
-                agent={getAgent(task.assigned_agent)}
-                priorityColor={getPriorityColor(task.priority)}
-                timeAgo={formatTimeAgo(task.created_at)}
-                onMoveLeft={() => moveTask(task.id, 'new')}
-                onMoveRight={() => moveTask(task.id, 'completed')}
-              />
-            ))}
-          </KanbanColumn>
+        {activeTab === 'orchestrator' && (
+          <OrchestratorTab
+            status={orchestratorStatus}
+            onInit={handleOrchestratorInit}
+            onShutdown={handleOrchestratorShutdown}
+          />
+        )}
 
-          {/* Completed Column */}
-          <KanbanColumn 
-            title="Completed" 
-            icon={<CheckCircle2 className="text-lime-400" size={18} />}
-            count={completedTasks.length}
-            color="lime"
-          >
-            {completedTasks.map(task => (
-              <TaskCard 
-                key={task.id}
-                task={task}
-                agent={getAgent(task.assigned_agent)}
-                priorityColor={getPriorityColor(task.priority)}
-                timeAgo={formatTimeAgo(task.updated_at)}
-                onMoveLeft={() => moveTask(task.id, 'in_progress')}
-                onMoveRight={null}
-              />
-            ))}
-          </KanbanColumn>
-        </div>
+        {activeTab === 'email' && (
+          <EmailAgentTab emails={emails} formatTimeAgo={formatTimeAgo} />
+        )}
 
-        {/* Activity Feed */}
-        <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-4 h-fit max-h-[calc(100vh-300px)] overflow-hidden flex flex-col">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-            <MessageSquare className="text-purple-400" size={18} />
-            Agent Activity
-          </h3>
-          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-            {activity.map(item => {
-              const fromAgent = getAgent(item.from_agent)
-              const toAgent = item.to_agent ? getAgent(item.to_agent) : null
-              return (
-                <div key={item.id} className="relative pl-4 border-l-2 border-white/10">
-                  <div className="absolute -left-[9px] top-0">
-                    <AgentAvatar agent={fromAgent} size="sm" />
-                  </div>
-                  <div className="ml-4">
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
-                      <span className="font-medium" style={{ color: fromAgent.color }}>{fromAgent.name}</span>
-                      {toAgent && (
-                        <>
-                          <ArrowRight size={12} />
-                          <span className="font-medium" style={{ color: toAgent.color }}>{toAgent.name}</span>
-                        </>
-                      )}
-                      <span>• {formatTimeAgo(item.created_at)}</span>
-                    </div>
-                    <p className="text-sm text-gray-300">{item.message}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
+        {activeTab === 'social' && (
+          <SocialMediaTab posts={socialPosts} formatTimeAgo={formatTimeAgo} />
+        )}
+
+        {activeTab === 'ads' && (
+          <GoogleAdsTab campaigns={adCampaigns} formatTimeAgo={formatTimeAgo} />
+        )}
+
+        {activeTab === 'seo' && (
+          <SeoAgentTab audits={seoAudits} formatTimeAgo={formatTimeAgo} />
+        )}
+
+        {activeTab === 'marketing' && (
+          <MarketingTab applications={resellerApps} formatTimeAgo={formatTimeAgo} />
+        )}
+      </AnimatePresence>
 
       {/* New Task Modal */}
       <AnimatePresence>
@@ -317,7 +555,6 @@ export default function MissionControl() {
             agents={AGENTS}
             onClose={() => setShowNewTaskModal(false)}
             onSubmit={async (task) => {
-              // Add to local state optimistically
               const newTask: Task = {
                 ...task,
                 id: Date.now().toString(),
@@ -327,7 +564,6 @@ export default function MissionControl() {
               setTasks(prev => [newTask, ...prev])
               setShowNewTaskModal(false)
               
-              // POST to API
               try {
                 await fetch('/api/squad', {
                   method: 'POST',
@@ -342,6 +578,498 @@ export default function MissionControl() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+// Overview Tab Component
+function OverviewTab({ newTasks, inProgressTasks, completedTasks, activity, moveTask, getAgent, getPriorityColor, formatTimeAgo }: any) {
+  return (
+    <motion.div
+      key="overview"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="grid grid-cols-1 lg:grid-cols-4 gap-6"
+    >
+      <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <KanbanColumn 
+          title="New Tasks" 
+          icon={<Clock className="text-blue-400" size={18} />}
+          count={newTasks.length}
+          color="blue"
+        >
+          {newTasks.map((task: Task) => (
+            <TaskCard 
+              key={task.id}
+              task={task}
+              agent={getAgent(task.assigned_agent)}
+              priorityColor={getPriorityColor(task.priority)}
+              timeAgo={formatTimeAgo(task.created_at)}
+              onMoveLeft={null}
+              onMoveRight={() => moveTask(task.id, 'in_progress')}
+            />
+          ))}
+        </KanbanColumn>
+
+        <KanbanColumn 
+          title="In Progress" 
+          icon={<Zap className="text-yellow-400" size={18} />}
+          count={inProgressTasks.length}
+          color="yellow"
+        >
+          {inProgressTasks.map((task: Task) => (
+            <TaskCard 
+              key={task.id}
+              task={task}
+              agent={getAgent(task.assigned_agent)}
+              priorityColor={getPriorityColor(task.priority)}
+              timeAgo={formatTimeAgo(task.created_at)}
+              onMoveLeft={() => moveTask(task.id, 'new')}
+              onMoveRight={() => moveTask(task.id, 'completed')}
+            />
+          ))}
+        </KanbanColumn>
+
+        <KanbanColumn 
+          title="Completed" 
+          icon={<CheckCircle2 className="text-lime-400" size={18} />}
+          count={completedTasks.length}
+          color="lime"
+        >
+          {completedTasks.map((task: Task) => (
+            <TaskCard 
+              key={task.id}
+              task={task}
+              agent={getAgent(task.assigned_agent)}
+              priorityColor={getPriorityColor(task.priority)}
+              timeAgo={formatTimeAgo(task.updated_at)}
+              onMoveLeft={() => moveTask(task.id, 'in_progress')}
+              onMoveRight={null}
+            />
+          ))}
+        </KanbanColumn>
+      </div>
+
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-4 h-fit max-h-[calc(100vh-300px)] overflow-hidden flex flex-col">
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+          <MessageSquare className="text-purple-400" size={18} />
+          Agent Activity
+        </h3>
+        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+          {activity.map((item: ActivityItem) => {
+            const fromAgent = getAgent(item.from_agent)
+            const toAgent = item.to_agent ? getAgent(item.to_agent) : null
+            return (
+              <div key={item.id} className="relative pl-4 border-l-2 border-white/10">
+                <div className="absolute -left-[9px] top-0">
+                  <AgentAvatar agent={fromAgent} size="sm" />
+                </div>
+                <div className="ml-4">
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                    <span className="font-medium" style={{ color: fromAgent.color }}>{fromAgent.name}</span>
+                    {toAgent && (
+                      <>
+                        <ArrowRight size={12} />
+                        <span className="font-medium" style={{ color: toAgent.color }}>{toAgent.name}</span>
+                      </>
+                    )}
+                    <span>• {formatTimeAgo(item.created_at)}</span>
+                  </div>
+                  <p className="text-sm text-gray-300">{item.message}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Orchestrator Control Tab
+function OrchestratorTab({ status, onInit, onShutdown }: { 
+  status: OrchestratorStatus | null
+  onInit: () => void
+  onShutdown: () => void
+}) {
+  return (
+    <motion.div
+      key="orchestrator"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+    >
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Settings className="text-purple-400" />
+          Control Panel
+        </h3>
+        <div className="space-y-4">
+          <button
+            onClick={onInit}
+            className="w-full px-4 py-3 bg-lime-400 hover:bg-lime-500 text-black font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            <Play size={18} />
+            Start Orchestrator
+          </button>
+          <button
+            onClick={onShutdown}
+            className="w-full px-4 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border border-red-500/30"
+          >
+            <Square size={18} />
+            Stop Orchestrator
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Activity className="text-lime-400" />
+          Token Budget
+        </h3>
+        {status ? (
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-400">Used</span>
+                <span className="text-white font-medium">
+                  {status.tokenBudget.used.toLocaleString()} / {status.tokenBudget.total.toLocaleString()}
+                </span>
+              </div>
+              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-lime-400 to-green-500"
+                  style={{ width: `${(status.tokenBudget.used / status.tokenBudget.total) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="pt-4 border-t border-white/5">
+              <h4 className="text-sm font-medium text-gray-400 mb-3">Agent Usage</h4>
+              <div className="space-y-2">
+                {Object.entries(status.tokenBudget.agentUsage).map(([agent, usage]) => (
+                  <div key={agent} className="flex justify-between text-sm">
+                    <span className="text-gray-300">{agent}</span>
+                    <span className="text-white font-mono">{usage.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No data available</p>
+        )}
+      </div>
+
+      <div className="lg:col-span-2 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Calendar className="text-blue-400" />
+          Active Operations
+        </h3>
+        {status && status.activeOperations.length > 0 ? (
+          <div className="space-y-2">
+            {status.activeOperations.map((op, idx) => (
+              <div key={idx} className="bg-[#252525] border border-white/5 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white">{op.action}</span>
+                  <span className="text-xs text-gray-400">{op.agents.join(', ')}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No active operations</p>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// Email Agent Tab
+function EmailAgentTab({ emails, formatTimeAgo }: { emails: EmailClassification[], formatTimeAgo: (date: string) => string }) {
+  return (
+    <motion.div
+      key="email"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+    >
+      <div className="lg:col-span-2 space-y-4">
+        <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Mail className="text-blue-400" />
+            Email Inbox
+          </h3>
+          <div className="space-y-2 max-h-[600px] overflow-y-auto">
+            {emails.length > 0 ? emails.map((email) => (
+              <div key={email.id} className="bg-[#252525] border border-white/5 rounded-xl p-4 hover:border-lime-500/30 transition-all">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-white">{email.subject}</p>
+                    <p className="text-xs text-gray-400 mt-1">{email.sender}</p>
+                  </div>
+                  <span className={`text-[10px] px-2 py-1 rounded-md border ${
+                    email.priority === 'urgent' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                    email.priority === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                    'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                  }`}>
+                    {email.priority}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">{email.classification}</span>
+                  <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">{email.status}</span>
+                  <span>{formatTimeAgo(email.created_at)}</span>
+                </div>
+              </div>
+            )) : (
+              <p className="text-gray-400 text-sm text-center py-8">No emails classified yet</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-4">Stats</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-400">Unread</span>
+              <span className="text-xl font-bold text-lime-400">{emails.filter(e => e.status === 'unread').length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-400">Replied</span>
+              <span className="text-xl font-bold text-blue-400">{emails.filter(e => e.status === 'replied').length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-400">Total</span>
+              <span className="text-xl font-bold text-white">{emails.length}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Social Media Tab
+function SocialMediaTab({ posts, formatTimeAgo }: { posts: SocialPost[], formatTimeAgo: (date: string) => string }) {
+  return (
+    <motion.div
+      key="social"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-4"
+    >
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Twitter className="text-blue-400" />
+          Post Queue
+        </h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {posts.length > 0 ? posts.map((post) => (
+            <div key={post.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <span className={`text-xs px-2 py-1 rounded-md border ${
+                  post.status === 'published' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
+                  post.status === 'scheduled' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                  'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                }`}>
+                  {post.status}
+                </span>
+                <span className="text-xs text-gray-400 uppercase">{post.platform}</span>
+              </div>
+              <p className="text-sm text-white mb-3 line-clamp-3">{post.content}</p>
+              <div className="flex items-center gap-4 text-xs text-gray-400 pt-3 border-t border-white/5">
+                <span className="flex items-center gap-1">
+                  <Activity size={12} />
+                  {post.engagement.likes}
+                </span>
+                <span className="flex items-center gap-1">
+                  <MessageSquare size={12} />
+                  {post.engagement.comments}
+                </span>
+                <span className="ml-auto">{formatTimeAgo(post.created_at)}</span>
+              </div>
+            </div>
+          )) : (
+            <p className="text-gray-400 text-sm text-center py-8 col-span-2">No posts scheduled</p>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Google Ads Tab
+function GoogleAdsTab({ campaigns, formatTimeAgo }: { campaigns: AdCampaign[], formatTimeAgo: (date: string) => string }) {
+  return (
+    <motion.div
+      key="ads"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-4"
+    >
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <BarChart3 className="text-green-400" />
+          Ad Campaigns
+        </h3>
+        <div className="space-y-4">
+          {campaigns.length > 0 ? campaigns.map((campaign) => (
+            <div key={campaign.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <h4 className="text-lg font-semibold text-white">{campaign.name}</h4>
+                  <p className="text-xs text-gray-400 mt-1">{campaign.platform}</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-md border ${
+                  campaign.status === 'active' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
+                  campaign.status === 'paused' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                  'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                }`}>
+                  {campaign.status}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-3 border-t border-white/5">
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Budget</p>
+                  <p className="text-sm font-bold text-white flex items-center gap-1">
+                    <DollarSign size={12} />
+                    {campaign.budget_spent} / {campaign.budget_total || '∞'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Impressions</p>
+                  <p className="text-sm font-bold text-white flex items-center gap-1">
+                    <Eye size={12} />
+                    {campaign.performance_metrics.impressions.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Clicks</p>
+                  <p className="text-sm font-bold text-white flex items-center gap-1">
+                    <MousePointer size={12} />
+                    {campaign.performance_metrics.clicks.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">CTR</p>
+                  <p className="text-sm font-bold text-lime-400">{campaign.performance_metrics.ctr.toFixed(2)}%</p>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <p className="text-gray-400 text-sm text-center py-8">No campaigns running</p>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// SEO Agent Tab
+function SeoAgentTab({ audits, formatTimeAgo }: { audits: SeoAudit[], formatTimeAgo: (date: string) => string }) {
+  return (
+    <motion.div
+      key="seo"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-4"
+    >
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Search className="text-indigo-400" />
+          SEO Audits
+        </h3>
+        <div className="space-y-3">
+          {audits.length > 0 ? audits.map((audit) => (
+            <div key={audit.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white">{audit.url}</p>
+                  <p className="text-xs text-gray-400 mt-1">{audit.audit_type}</p>
+                </div>
+                <div className="text-right">
+                  {audit.score !== null && (
+                    <div className={`text-2xl font-bold ${
+                      audit.score >= 80 ? 'text-lime-400' :
+                      audit.score >= 60 ? 'text-yellow-400' :
+                      'text-red-400'
+                    }`}>
+                      {audit.score}
+                    </div>
+                  )}
+                  <span className={`text-xs px-2 py-1 rounded-md border ${
+                    audit.status === 'completed' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
+                    audit.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                    'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                  }`}>
+                    {audit.status}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-400 pt-2 border-t border-white/5">
+                <span>{audit.issues_found.length} issues</span>
+                <span>{audit.recommendations.length} fixes</span>
+                <span className="ml-auto">{formatTimeAgo(audit.created_at)}</span>
+              </div>
+            </div>
+          )) : (
+            <p className="text-gray-400 text-sm text-center py-8">No audits performed yet</p>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Marketing Tab
+function MarketingTab({ applications, formatTimeAgo }: { applications: ResellerApplication[], formatTimeAgo: (date: string) => string }) {
+  return (
+    <motion.div
+      key="marketing"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-4"
+    >
+      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Megaphone className="text-pink-400" />
+          Reseller Applications
+        </h3>
+        <div className="space-y-3">
+          {applications.length > 0 ? applications.map((app) => (
+            <div key={app.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white">{app.company_name}</p>
+                  <p className="text-xs text-gray-400 mt-1">{app.contact_name} • {app.contact_email}</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-md border ${
+                  app.status === 'approved' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
+                  app.status === 'under_review' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                  app.status === 'rejected' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                  'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                }`}>
+                  {app.status}
+                </span>
+              </div>
+              <div className="text-xs text-gray-400 pt-2 border-t border-white/5">
+                {formatTimeAgo(app.created_at)}
+              </div>
+            </div>
+          )) : (
+            <p className="text-gray-400 text-sm text-center py-8">No applications submitted yet</p>
+          )}
+        </div>
+      </div>
+    </motion.div>
   )
 }
 
@@ -461,7 +1189,6 @@ function NewTaskModal({ agents, onClose, onSubmit }: {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    // Send capitalized name (e.g. 'Jarvis') not lowercase id (e.g. 'jarvis')
     const agent = agents.find(a => a.id === assignedAgent)
     onSubmit({
       title,
