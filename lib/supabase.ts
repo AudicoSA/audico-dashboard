@@ -184,3 +184,46 @@ export type SquadMessage = {
   data: any
   created_at: string
 }
+
+export type CallTranscript = {
+  id: string
+  call_id: string
+  customer_phone: string
+  customer_name: string | null
+  customer_email: string | null
+  call_duration: number | null
+  call_start_time: string
+  call_end_time: string | null
+  transcript: string
+  summary: string | null
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed' | null
+  call_outcome: 'resolved' | 'follow_up_needed' | 'escalation' | 'inquiry' | 'order' | 'complaint' | 'other' | null
+  customer_intent: string | null
+  key_topics: string[]
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type CustomerInteraction = {
+  id: string
+  customer_id: string
+  customer_name: string | null
+  customer_email: string | null
+  customer_phone: string | null
+  interaction_type: 'call' | 'email' | 'chat' | 'social' | 'order' | 'support_ticket' | 'other'
+  interaction_source: string
+  interaction_date: string
+  subject: string | null
+  summary: string | null
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed' | null
+  outcome: string | null
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  status: 'pending' | 'in_progress' | 'completed' | 'follow_up_required'
+  assigned_agent: string | null
+  reference_id: string | null
+  reference_type: string | null
+  details: any
+  created_at: string
+  updated_at: string
+}
