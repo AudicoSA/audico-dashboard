@@ -34,6 +34,7 @@ import OrchestratorPanel from './components/OrchestratorPanel'
 import EmailAgentPanel from './components/EmailAgentPanel'
 import SocialAgentPanel from './components/SocialAgentPanel'
 import AdsAgentPanel from './components/AdsAgentPanel'
+import SeoAgentPanel from './components/SeoAgentPanel'
 
 // Agent definitions with colors
 const AGENTS = [
@@ -488,7 +489,14 @@ export default function MissionControl() {
         )}
 
         {activeTab === 'seo' && (
-          <SeoAgentTab audits={seoAudits} formatTimeAgo={formatTimeAgo} />
+          <motion.div
+            key="seo"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <SeoAgentPanel />
+          </motion.div>
         )}
 
         {activeTab === 'marketing' && (
@@ -686,62 +694,7 @@ function SocialMediaTab({ posts, formatTimeAgo }: { posts: SocialPost[], formatT
 
 
 
-// SEO Agent Tab
-function SeoAgentTab({ audits, formatTimeAgo }: { audits: SeoAudit[], formatTimeAgo: (date: string) => string }) {
-  return (
-    <motion.div
-      key="seo"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-4"
-    >
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Search className="text-indigo-400" />
-          SEO Audits
-        </h3>
-        <div className="space-y-3">
-          {audits.length > 0 ? audits.map((audit) => (
-            <div key={audit.id} className="bg-[#252525] border border-white/5 rounded-xl p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">{audit.url}</p>
-                  <p className="text-xs text-gray-400 mt-1">{audit.audit_type}</p>
-                </div>
-                <div className="text-right">
-                  {audit.score !== null && (
-                    <div className={`text-2xl font-bold ${
-                      audit.score >= 80 ? 'text-lime-400' :
-                      audit.score >= 60 ? 'text-yellow-400' :
-                      'text-red-400'
-                    }`}>
-                      {audit.score}
-                    </div>
-                  )}
-                  <span className={`text-xs px-2 py-1 rounded-md border ${
-                    audit.status === 'completed' ? 'bg-lime-500/20 text-lime-400 border-lime-500/30' :
-                    audit.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                    'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                  }`}>
-                    {audit.status}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-gray-400 pt-2 border-t border-white/5">
-                <span>{audit.issues_found.length} issues</span>
-                <span>{audit.recommendations.length} fixes</span>
-                <span className="ml-auto">{formatTimeAgo(audit.created_at)}</span>
-              </div>
-            </div>
-          )) : (
-            <p className="text-gray-400 text-sm text-center py-8">No audits performed yet</p>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
+
 
 // Marketing Tab
 function MarketingTab({ applications, formatTimeAgo }: { applications: ResellerApplication[], formatTimeAgo: (date: string) => string }) {
