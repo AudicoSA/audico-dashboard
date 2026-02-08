@@ -24,7 +24,7 @@ async function getGmailClient() {
 }
 
 async function logToSquadMessages(fromAgent: string, message: string, data: any = null) {
-  await supabase
+  const { error } = await supabase
     .from('squad_messages')
     .insert({
       from_agent: fromAgent,
@@ -33,6 +33,13 @@ async function logToSquadMessages(fromAgent: string, message: string, data: any 
       task_id: null,
       data,
     })
+
+  if (error) {
+    console.error('❌ Failed to log to squad_messages:', error)
+    console.error('Attempted insert:', { fromAgent, message, data })
+  } else {
+    console.log('✅ Successfully logged to squad_messages:', message)
+  }
 }
 
 export async function GET() {
