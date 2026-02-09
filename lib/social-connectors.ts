@@ -302,20 +302,9 @@ export class InstagramConnector {
 
 export class TwitterConnector {
   private accessToken: string
-  private accessTokenSecret: string
-  private consumerKey: string
-  private consumerSecret: string
 
-  constructor(
-    accessToken: string,
-    accessTokenSecret: string,
-    consumerKey: string,
-    consumerSecret: string
-  ) {
+  constructor(accessToken: string) {
     this.accessToken = accessToken
-    this.accessTokenSecret = accessTokenSecret
-    this.consumerKey = consumerKey
-    this.consumerSecret = consumerSecret
   }
 
   async post(content: string, mediaUrls: string[] = []): Promise<PostResult> {
@@ -336,11 +325,14 @@ export class TwitterConnector {
         }
       }
 
-      const response = await this.makeAuthenticatedRequest(
-        'https://api.twitter.com/2/tweets',
-        'POST',
-        tweetData
-      )
+      const response = await fetch('https://api.twitter.com/2/tweets', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tweetData),
+      })
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -373,11 +365,17 @@ export class TwitterConnector {
         const imageBuffer = await imageResponse.arrayBuffer()
         const base64Image = Buffer.from(imageBuffer).toString('base64')
 
-        const uploadResponse = await this.makeAuthenticatedRequest(
+        const uploadResponse = await fetch(
           'https://upload.twitter.com/1.1/media/upload.json',
-          'POST',
           {
-            media_data: base64Image,
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              media_data: base64Image,
+            }),
           }
         )
 
@@ -393,86 +391,13 @@ export class TwitterConnector {
     return mediaIds
   }
 
-  private async makeAuthenticatedRequest(
-    url: string,
-    method: string,
-    body?: any
-  ): Promise<Response> {
-    const timestamp = Math.floor(Date.now() / 1000).toString()
-    const nonce = this.generateNonce()
-
-    const params: Record<string, string> = {
-      oauth_consumer_key: this.consumerKey,
-      oauth_token: this.accessToken,
-      oauth_signature_method: 'HMAC-SHA1',
-      oauth_timestamp: timestamp,
-      oauth_nonce: nonce,
-      oauth_version: '1.0',
-    }
-
-    const signature = await this.generateSignature(method, url, params, body)
-    params.oauth_signature = signature
-
-    const authHeader = this.buildAuthorizationHeader(params)
-
-    const headers: HeadersInit = {
-      Authorization: authHeader,
-      'Content-Type': 'application/json',
-    }
-
-    const options: RequestInit = {
-      method,
-      headers,
-    }
-
-    if (body) {
-      options.body = JSON.stringify(body)
-    }
-
-    return fetch(url, options)
-  }
-
-  private generateNonce(): string {
-    return Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15)
-  }
-
-  private async generateSignature(
-    method: string,
-    url: string,
-    params: Record<string, string>,
-    body?: any
-  ): Promise<string> {
-    const sortedParams = Object.keys(params)
-      .sort()
-      .map((key) => `${key}=${encodeURIComponent(params[key])}`)
-      .join('&')
-
-    const signatureBase = `${method.toUpperCase()}&${encodeURIComponent(url)}&${encodeURIComponent(sortedParams)}`
-
-    const signingKey = `${encodeURIComponent(this.consumerSecret)}&${encodeURIComponent(this.accessTokenSecret)}`
-
-    const crypto = await import('crypto')
-    const hmac = crypto.createHmac('sha1', signingKey)
-    hmac.update(signatureBase)
-    return hmac.digest('base64')
-  }
-
-  private buildAuthorizationHeader(params: Record<string, string>): string {
-    const authParams = Object.keys(params)
-      .sort()
-      .map((key) => `${key}="${encodeURIComponent(params[key])}"`)
-      .join(', ')
-
-    return `OAuth ${authParams}`
-  }
-
   async verifyToken(): Promise<boolean> {
     try {
-      const response = await this.makeAuthenticatedRequest(
-        'https://api.twitter.com/2/users/me',
-        'GET'
-      )
+      const response = await fetch('https://api.twitter.com/2/users/me', {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+        },
+      })
       return response.ok
     } catch {
       return false
@@ -508,12 +433,7 @@ export async function createConnector(
         account.metadata.instagram_account_id
       )
     case 'twitter':
-      return new TwitterConnector(
-        account.access_token,
-        account.metadata.access_token_secret,
-        process.env.TWITTER_CONSUMER_KEY || '',
-        process.env.TWITTER_CONSUMER_SECRET || ''
-      )
+      return new TwitterConnector(account.access_token)
     default:
       return null
   }

@@ -1,75 +1,100 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// OAuth 2.0 with PKCE
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const oauth_token = searchParams.get('oauth_token')
-    const oauth_verifier = searchParams.get('oauth_verifier')
-    const denied = searchParams.get('denied')
+    const code = searchParams.get('code')
+    const state = searchParams.get('state')
+    const error = searchParams.get('error')
 
-    if (denied) {
+    if (error) {
       return NextResponse.redirect(
-        new URL(`/social/connect?error=User denied access`, request.url)
+        new URL(`/social/connect?error=${encodeURIComponent(error)}`, request.url)
       )
     }
 
-    if (!oauth_token || !oauth_verifier) {
-      return await initiateTwitterOAuth(request)
+    // If no code, initiate OAuth flow
+    if (!code || !state) {
+      return await initiateTwitterOAuth2(request)
     }
 
-    const { data: oauthData, error: fetchError } = await supabase
+    // Verify state and get PKCE verifier
+    const { data: pkceData, error: fetchError } = await supabase
       .from('oauth_temp_tokens')
       .select('*')
-      .eq('oauth_token', oauth_token)
+      .eq('oauth_token', state)
       .single()
 
-    if (fetchError || !oauthData) {
-      throw new Error('OAuth token not found or expired')
+    if (fetchError || !pkceData) {
+      throw new Error('Invalid or expired OAuth state')
     }
 
-    const accessTokenUrl = 'https://api.twitter.com/oauth/access_token'
-    const params = new URLSearchParams({
-      oauth_token,
-      oauth_verifier,
-    })
+    const codeVerifier = pkceData.oauth_token_secret
 
-    const tokenResponse = await fetch(`${accessTokenUrl}?${params.toString()}`, {
+    // Exchange code for access token
+    const clientId = process.env.TWITTER_CLIENT_ID!
+    const clientSecret = process.env.TWITTER_CLIENT_SECRET!
+    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/social/oauth/twitter`
+
+    const tokenUrl = 'https://api.twitter.com/2/oauth2/token'
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+
+    const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${basicAuth}`,
+      },
+      body: new URLSearchParams({
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      }),
     })
 
     if (!tokenResponse.ok) {
-      throw new Error('Failed to exchange verifier for access token')
+      const errorText = await tokenResponse.text()
+      throw new Error(`Token exchange failed: ${errorText}`)
     }
 
-    const tokenText = await tokenResponse.text()
-    const tokenParams = new URLSearchParams(tokenText)
+    const tokenData = await tokenResponse.json()
 
-    const accessToken = tokenParams.get('oauth_token')
-    const accessTokenSecret = tokenParams.get('oauth_token_secret')
-    const userId = tokenParams.get('user_id')
-    const screenName = tokenParams.get('screen_name')
+    // Get user info
+    const userResponse = await fetch('https://api.twitter.com/2/users/me', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    })
 
-    if (!accessToken || !accessTokenSecret) {
-      throw new Error('Invalid token response from Twitter')
+    if (!userResponse.ok) {
+      throw new Error('Failed to fetch user info')
     }
 
+    const userData = await userResponse.json()
+
+    // Clean up temp token
     await supabase
       .from('oauth_temp_tokens')
       .delete()
-      .eq('oauth_token', oauth_token)
+      .eq('oauth_token', state)
 
+    // Prepare account data
     const accountsData = encodeURIComponent(
       JSON.stringify({
-        user_id: userId,
-        screen_name: screenName,
-        access_token: accessToken,
-        access_token_secret: accessTokenSecret,
+        user_id: userData.data.id,
+        screen_name: userData.data.username,
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expires_in: tokenData.expires_in,
       })
     )
 
@@ -77,7 +102,7 @@ export async function GET(request: NextRequest) {
       new URL(`/social/connect?platform=twitter&data=${accountsData}`, request.url)
     )
   } catch (error) {
-    console.error('Twitter OAuth error:', error)
+    console.error('Twitter OAuth 2.0 error:', error)
     return NextResponse.redirect(
       new URL(
         `/social/connect?error=${encodeURIComponent(error instanceof Error ? error.message : 'Unknown error')}`,
@@ -87,94 +112,42 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function initiateTwitterOAuth(request: NextRequest): Promise<NextResponse> {
-  const consumerKey = process.env.TWITTER_CONSUMER_KEY!
-  const consumerSecret = process.env.TWITTER_CONSUMER_SECRET!
-  const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/social/oauth/twitter`
+async function initiateTwitterOAuth2(request: NextRequest): Promise<NextResponse> {
+  const clientId = process.env.TWITTER_CLIENT_ID!
+  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/social/oauth/twitter`
 
-  const requestTokenUrl = 'https://api.twitter.com/oauth/request_token'
+  // Generate PKCE challenge
+  const codeVerifier = generateCodeVerifier()
+  const codeChallenge = generateCodeChallenge(codeVerifier)
+  const state = crypto.randomBytes(32).toString('hex')
 
-  const timestamp = Math.floor(Date.now() / 1000).toString()
-  const nonce = Math.random().toString(36).substring(2, 15)
-
-  const params: Record<string, string> = {
-    oauth_consumer_key: consumerKey,
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp: timestamp,
-    oauth_nonce: nonce,
-    oauth_version: '1.0',
-    oauth_callback: callbackUrl,
-  }
-
-  const signature = await generateOAuthSignature(
-    'POST',
-    requestTokenUrl,
-    params,
-    consumerSecret,
-    ''
-  )
-  params.oauth_signature = signature
-
-  const authHeader = buildAuthorizationHeader(params)
-
-  const response = await fetch(requestTokenUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: authHeader,
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to get request token from Twitter')
-  }
-
-  const responseText = await response.text()
-  const responseParams = new URLSearchParams(responseText)
-
-  const oauthToken = responseParams.get('oauth_token')
-  const oauthTokenSecret = responseParams.get('oauth_token_secret')
-
-  if (!oauthToken || !oauthTokenSecret) {
-    throw new Error('Invalid request token response')
-  }
-
+  // Store code verifier and state temporarily
   await supabase.from('oauth_temp_tokens').insert({
-    oauth_token: oauthToken,
-    oauth_token_secret: oauthTokenSecret,
+    oauth_token: state,
+    oauth_token_secret: codeVerifier,
     platform: 'twitter',
   })
 
-  const authorizeUrl = `https://api.twitter.com/oauth/authorize?oauth_token=${oauthToken}`
-  return NextResponse.redirect(authorizeUrl)
+  // Build authorization URL
+  const authUrl = new URL('https://twitter.com/i/oauth2/authorize')
+  authUrl.searchParams.set('response_type', 'code')
+  authUrl.searchParams.set('client_id', clientId)
+  authUrl.searchParams.set('redirect_uri', redirectUri)
+  authUrl.searchParams.set('scope', 'tweet.read tweet.write users.read offline.access')
+  authUrl.searchParams.set('state', state)
+  authUrl.searchParams.set('code_challenge', codeChallenge)
+  authUrl.searchParams.set('code_challenge_method', 'S256')
+
+  return NextResponse.redirect(authUrl.toString())
 }
 
-async function generateOAuthSignature(
-  method: string,
-  url: string,
-  params: Record<string, string>,
-  consumerSecret: string,
-  tokenSecret: string
-): Promise<string> {
-  const sortedParams = Object.keys(params)
-    .sort()
-    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
-    .join('&')
-
-  const signatureBase = `${method.toUpperCase()}&${encodeURIComponent(url)}&${encodeURIComponent(sortedParams)}`
-
-  const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`
-
-  const crypto = await import('crypto')
-  const hmac = crypto.createHmac('sha1', signingKey)
-  hmac.update(signatureBase)
-  return hmac.digest('base64')
+function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString('base64url')
 }
 
-function buildAuthorizationHeader(params: Record<string, string>): string {
-  const authParams = Object.keys(params)
-    .sort()
-    .map((key) => `${key}="${encodeURIComponent(params[key])}"`)
-    .join(', ')
-
-  return `OAuth ${authParams}`
+function generateCodeChallenge(verifier: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(verifier)
+    .digest('base64url')
 }
