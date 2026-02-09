@@ -82,6 +82,14 @@ function classifyEmail(from: string, subject: string, body: string): {
   return { category, priority }
 }
 
+export async function GET() {
+  return NextResponse.json({
+    status: 'email-classify-route-active',
+    message: 'Use POST with Authorization: Bearer CRON_SECRET',
+    timestamp: new Date().toISOString()
+  })
+}
+
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -90,10 +98,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.email_classify)
-    
+
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { 
+        {
           error: 'Rate limit exceeded',
           remaining: rateLimit.remaining,
           resetAt: new Date(rateLimit.resetAt).toISOString(),
@@ -102,113 +110,127 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const { email_id, gmail_message_id } = body
+    await logAgentActivity({
+      agentName: 'email_agent',
+      logLevel: 'info',
+      eventType: 'classify_start',
+      message: 'Starting email classification',
+      context: { action: 'classify_start' }
+    })
 
-    if (!email_id && !gmail_message_id) {
-      return NextResponse.json(
-        { error: 'email_id or gmail_message_id is required' },
-        { status: 400 }
+    // Fetch ALL unclassified emails
+    const { data: unclassifiedEmails, error: fetchError } = await supabase
+      .from('email_logs')
+      .select('*')
+      .eq('category', 'unclassified')
+      .limit(20)
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch unclassified emails: ${fetchError.message}`)
+    }
+
+    if (!unclassifiedEmails || unclassifiedEmails.length === 0) {
+      await logToSquadMessages(
+        'Email Agent',
+        'No unclassified emails to process',
+        { action: 'classify_complete', count: 0 }
       )
+      return NextResponse.json({
+        success: true,
+        classified: 0,
+        message: 'No emails to classify',
+        remaining: rateLimit.remaining
+      })
     }
 
     await logToSquadMessages(
-      'email_agent',
-      `Classifying email: ${email_id || gmail_message_id}`,
-      { action: 'classify_start', email_id, gmail_message_id }
+      'Email Agent',
+      `📧 Classifying ${unclassifiedEmails.length} emails`,
+      { action: 'classify_start', count: unclassifiedEmails.length }
     )
 
-    let query = supabase.from('email_logs').select('*')
-    
-    if (email_id) {
-      query = query.eq('id', email_id)
-    } else {
-      query = query.eq('gmail_message_id', gmail_message_id)
+    const classified = []
+    const failed = []
+
+    for (const emailLog of unclassifiedEmails) {
+      try {
+        const { category, priority } = classifyEmail(
+          emailLog.from_email,
+          emailLog.subject,
+          emailLog.payload?.body || ''
+        )
+
+        const { data: updated, error: updateError } = await supabase
+          .from('email_logs')
+          .update({
+            category,
+            status: 'classified',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', emailLog.id)
+          .select()
+          .single()
+
+        if (updateError) {
+          failed.push({ id: emailLog.id, error: updateError.message })
+          continue
+        }
+
+        classified.push({
+          id: emailLog.id,
+          subject: emailLog.subject,
+          category,
+          priority
+        })
+
+        await logToSquadMessages(
+          'Email Agent',
+          `📬 ${category.toUpperCase()}: "${emailLog.subject}" (${priority} priority)`,
+          {
+            action: 'email_classified',
+            email_id: emailLog.id,
+            category,
+            priority,
+          }
+        )
+      } catch (error: any) {
+        failed.push({ id: emailLog.id, error: error.message })
+      }
     }
-
-    const { data: emailLog, error: fetchError } = await query.single()
-
-    if (fetchError || !emailLog) {
-      return NextResponse.json(
-        { error: 'Email not found' },
-        { status: 404 }
-      )
-    }
-
-    const { category, priority } = classifyEmail(
-      emailLog.from_email,
-      emailLog.subject,
-      emailLog.payload?.body || ''
-    )
-
-    const { data: updated, error: updateError } = await supabase
-      .from('email_logs')
-      .update({
-        category,
-        status: 'classified',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', emailLog.id)
-      .select()
-      .single()
-
-    if (updateError) {
-      await logToSquadMessages(
-        'email_agent',
-        `Classification failed: ${updateError.message}`,
-        { action: 'classify_error', error: updateError.message }
-      )
-      throw updateError
-    }
-
-    const { data: classification, error: classificationError } = await supabase
-      .from('email_classifications')
-      .insert({
-        email_id: emailLog.gmail_message_id,
-        sender: emailLog.from_email,
-        subject: emailLog.subject,
-        body: emailLog.payload?.body || null,
-        classification: category,
-        priority,
-        assigned_agent: 'email_agent',
-        status: 'read',
-        metadata: {
-          classified_at: new Date().toISOString(),
-          snippet: emailLog.payload?.snippet,
-        },
-      })
-      .select()
-      .single()
 
     await logAgentExecution('email_classify', {
-      email_id: emailLog.id,
-      category,
-      priority,
+      classified: classified.length,
+      failed: failed.length,
       status: 'completed',
     })
 
     await logToSquadMessages(
-      'email_agent',
-      `Email classified as ${category} with ${priority} priority`,
+      'Email Agent',
+      `✅ Classification complete: ${classified.length} classified, ${failed.length} failed`,
       {
         action: 'classify_complete',
-        email_id: emailLog.id,
-        category,
-        priority,
-        classification_id: classification?.id,
+        classified: classified.length,
+        failed: failed.length,
         remaining: rateLimit.remaining,
       }
     )
 
+    // Update agent status
+    await supabase.from('squad_agents').update({
+      status: 'active',
+      last_active: new Date().toISOString()
+    }).eq('name', 'Email Agent')
+
     return NextResponse.json({
       success: true,
-      email: updated,
-      classification,
+      classified: classified.length,
+      failed: failed.length,
+      emails: classified,
       remaining: rateLimit.remaining,
     })
   } catch (error: any) {
     console.error('Email classification error:', error)
-    
+
     await logAgentActivity({
       agentName: 'email_agent',
       logLevel: 'error',
@@ -222,13 +244,13 @@ export async function POST(request: NextRequest) {
     })
 
     await logToSquadMessages(
-      'email_agent',
-      `Classification failed: ${error.message}`,
+      'Email Agent',
+      `❌ Classification failed: ${error.message}`,
       { action: 'classify_error', error: error.message }
     )
 
     return NextResponse.json(
-      { error: 'Failed to classify email', details: error.message },
+      { error: 'Failed to classify emails', details: error.message },
       { status: 500 }
     )
   }
