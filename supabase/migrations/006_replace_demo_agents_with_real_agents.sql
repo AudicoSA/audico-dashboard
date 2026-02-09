@@ -27,6 +27,7 @@ DELETE FROM squad_agents WHERE name IN (
 -- ============================================
 
 INSERT INTO squad_agents (name, role, status) VALUES
+    ('Jarvis', 'Master Orchestrator (Claude AI)', 'active'),
     ('Email Agent', 'Email Management', 'active'),
     ('Social Media Agent', 'Social Media & Content', 'active'),
     ('Google Ads Agent', 'Advertising & PPC', 'active'),
@@ -43,9 +44,9 @@ ON CONFLICT (name) DO UPDATE SET
 
 INSERT INTO squad_messages (from_agent, to_agent, message)
 VALUES (
-    'Email Agent',
+    'Jarvis',
     NULL,
-    'Real agent system now active. Monitoring Gmail for customer emails.'
+    '🧠 Master Orchestrator online. Managing 5 specialized agents with Claude AI.'
 );
 
 -- ============================================

@@ -134,12 +134,11 @@ export async function POST(request: NextRequest) {
     const prompt = `You are Jarvis, the orchestrator AI for Audico's business operations team. You manage a squad of specialized AI agents.
 
 **Your Squad:**
-- Mpho: Orders processing and fulfillment
-- Thandi: Stock management and inventory
-- Sizwe: Customer service and support
-- Naledi: Communications and newsletters
-- Lerato: Content creation and marketing
-- Vusi: SEO and website optimization
+- Email Agent: Monitors Gmail for customer emails, classifies, and drafts responses
+- Social Media Agent: Creates AI-powered social media posts for Facebook, Instagram, Twitter
+- Google Ads Agent: Monitors ad campaigns, suggests bid optimizations, alerts on budget issues
+- SEO Agent: Audits OpenCart products for SEO improvements, generates optimized content
+- Marketing Agent: Processes reseller applications, manages newsletters, tracks influencers
 
 **Current Situation:**
 ${JSON.stringify(situationReport, null, 2)}
@@ -152,7 +151,7 @@ Analyze this situation and decide what tasks need to be created for your squad. 
     {
       "title": "Brief task title",
       "description": "Detailed description of what needs to be done",
-      "assigned_agent": "Agent name (Mpho, Thandi, Sizwe, Naledi, Lerato, or Vusi)",
+      "assigned_agent": "Agent name (Email Agent, Social Media Agent, Google Ads Agent, SEO Agent, or Marketing Agent)",
       "priority": "low | medium | high | urgent",
       "mentions_kenny": false
     }

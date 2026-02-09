@@ -25,11 +25,12 @@ import { supabase } from '@/lib/supabase'
 import VisualContentPanel from './components/VisualContentPanel'
 
 const AGENTS = [
+  { id: 'jarvis', name: 'Jarvis', role: 'Master Orchestrator (Claude AI)', color: '#a855f7' },
   { id: 'email-agent', name: 'Email Agent', role: 'Email Management', color: '#3b82f6' },
   { id: 'social-media-agent', name: 'Social Media Agent', role: 'Social Media & Content', color: '#ec4899' },
   { id: 'google-ads-agent', name: 'Google Ads Agent', role: 'Advertising & PPC', color: '#f59e0b' },
   { id: 'seo-agent', name: 'SEO Agent', role: 'SEO & Product Optimization', color: '#22c55e' },
-  { id: 'marketing-agent', name: 'Marketing Agent', role: 'Marketing & Resellers', color: '#a855f7' },
+  { id: 'marketing-agent', name: 'Marketing Agent', role: 'Marketing & Resellers', color: '#14b8a6' },
 ]
 
 type TaskStatus = 'new' | 'in_progress' | 'completed'
