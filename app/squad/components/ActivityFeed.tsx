@@ -35,13 +35,11 @@ interface ActivityMessage extends SquadMessage {
 }
 
 const AGENTS: Agent[] = [
-  { id: 'jarvis', name: 'Jarvis', role: 'Orchestrator', color: '#a855f7' },
-  { id: 'mpho', name: 'Mpho', role: 'Orders', color: '#3b82f6' },
-  { id: 'thandi', name: 'Thandi', role: 'Stock', color: '#22c55e' },
-  { id: 'sizwe', name: 'Sizwe', role: 'Customer', color: '#f59e0b' },
-  { id: 'naledi', name: 'Naledi', role: 'Comms', color: '#ec4899' },
-  { id: 'lerato', name: 'Lerato', role: 'Content', color: '#14b8a6' },
-  { id: 'vusi', name: 'Vusi', role: 'SEO', color: '#f43f5e' },
+  { id: 'email-agent', name: 'Email Agent', role: 'Email Management', color: '#3b82f6' },
+  { id: 'social-media-agent', name: 'Social Media Agent', role: 'Social Media & Content', color: '#ec4899' },
+  { id: 'google-ads-agent', name: 'Google Ads Agent', role: 'Advertising & PPC', color: '#f59e0b' },
+  { id: 'seo-agent', name: 'SEO Agent', role: 'SEO & Product Optimization', color: '#22c55e' },
+  { id: 'marketing-agent', name: 'Marketing Agent', role: 'Marketing & Resellers', color: '#a855f7' },
 ]
 
 type TimeRange = 'all' | '1h' | '24h' | '7d' | '30d'
