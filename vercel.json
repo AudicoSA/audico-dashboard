@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/quote-chat/sync",
       "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/resilience-health-check",
+      "schedule": "*/5 * * * *"
     }
   ],
   "rewrites": [

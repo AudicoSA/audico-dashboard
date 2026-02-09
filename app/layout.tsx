@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Link from 'next/link'
-import { LayoutGrid, ShoppingBag, Package, FileText, Settings, Link2, Bell, Search, PlusCircle, AlertOctagon, Bot, Users, Share2, MessageCircle } from 'lucide-react'
+import { LayoutGrid, ShoppingBag, Package, FileText, Settings, Link2, Bell, Search, PlusCircle, AlertOctagon, Bot, Users, Share2, MessageCircle, Activity } from 'lucide-react'
 import MissionControlNavItem from './components/MissionControlNavItem'
+import '../lib/resilience/init'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -47,6 +48,7 @@ export default function RootLayout({
               <NavItem href="/kait" icon={<Bot size={22} />} label="Kait's Desk" />
               <MissionControlNavItem />
               <NavItem href="/whatsapp" icon={<MessageCircle size={22} />} label="WhatsApp" />
+              <NavItem href="/resilience" icon={<Activity size={22} />} label="API Resilience" />
               <NavItem href="/logs" icon={<FileText size={22} />} label="System Logs" />
               <NavItem href="/settings/agents" icon={<Settings size={22} />} label="Agent Settings" />
             </nav>
