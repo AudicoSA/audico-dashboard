@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import VisualContentPanel from './components/VisualContentPanel'
+import AnalyticsAgentPanel from './components/AnalyticsAgentPanel'
 
 const AGENTS = [
   { id: 'jarvis', name: 'Jarvis', role: 'Orchestrator', color: '#a855f7' },
@@ -32,6 +33,7 @@ const AGENTS = [
   { id: 'naledi', name: 'Naledi', role: 'Comms', color: '#ec4899' },
   { id: 'lerato', name: 'Lerato', role: 'Content', color: '#14b8a6' },
   { id: 'vusi', name: 'Vusi', role: 'SEO', color: '#f43f5e' },
+  { id: 'analytics', name: 'Analytics', role: 'Intelligence', color: '#06b6d4' },
 ]
 
 type TaskStatus = 'new' | 'in_progress' | 'completed'
@@ -827,6 +829,12 @@ function AgentDetailView({ agent, metrics, tasks, onMoveTask, onTriggerAgent, is
       {(agent.name === 'Naledi' || agent.name === 'Lerato') && (
         <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
           <VisualContentPanel agentName={agent.name as 'Naledi' | 'Lerato'} />
+        </div>
+      )}
+      
+      {agent.name === 'Analytics' && (
+        <div className="mt-6">
+          <AnalyticsAgentPanel />
         </div>
       )}
     </div>
