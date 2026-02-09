@@ -1,0 +1,251 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run lint
+        run: npm run lint
+        continue-on-error: true
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run unit tests
+        run: npm run test
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co'
+          SUPABASE_SERVICE_ROLE_KEY: 'test-service-key'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
+          ANTHROPIC_API_KEY: 'test-anthropic-key'
+          GOOGLE_ADS_CLIENT_ID: 'test-client-id'
+          GOOGLE_ADS_CLIENT_SECRET: 'test-client-secret'
+          GOOGLE_ADS_DEVELOPER_TOKEN: 'test-developer-token'
+          GOOGLE_ADS_CUSTOMER_ID: 'test-customer-id'
+          GOOGLE_ADS_REFRESH_TOKEN: 'test-refresh-token'
+          GOOGLE_PLACES_API_KEY: 'test-places-key'
+          GOOGLE_CLOUD_PROJECT_ID: 'test-project'
+          OPENCART_DB_HOST: 'localhost'
+          OPENCART_DB_PORT: '3306'
+          OPENCART_DB_USER: 'test'
+          OPENCART_DB_PASSWORD: 'test'
+          OPENCART_DB_NAME: 'test_db'
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL || 'https://test.supabase.co' }}
+          TEST_SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_KEY || 'test-service-key' }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY || 'test-anon-key' }}
+          ANTHROPIC_API_KEY: 'test-anthropic-key'
+          GOOGLE_PLACES_API_KEY: 'test-places-key'
+          GOOGLE_ADS_CLIENT_ID: 'test-client-id'
+          GOOGLE_ADS_CLIENT_SECRET: 'test-client-secret'
+          GOOGLE_ADS_DEVELOPER_TOKEN: 'test-developer-token'
+          GOOGLE_ADS_CUSTOMER_ID: 'test-customer-id'
+          GOOGLE_ADS_REFRESH_TOKEN: 'test-refresh-token'
+          GOOGLE_CLOUD_PROJECT_ID: 'test-project'
+          OPENCART_DB_HOST: 'localhost'
+          OPENCART_DB_PORT: '3306'
+          OPENCART_DB_USER: 'test'
+          OPENCART_DB_PASSWORD: 'test'
+          OPENCART_DB_NAME: 'test_db'
+          NOTEBOOKLM_PYTHON_PATH: '/mock/python/path'
+          
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 7
+        continue-on-error: true
+
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co'
+          SUPABASE_SERVICE_ROLE_KEY: 'test-service-key'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
+          ANTHROPIC_API_KEY: 'test-anthropic-key'
+          GOOGLE_PLACES_API_KEY: 'test-places-key'
+          GOOGLE_ADS_CLIENT_ID: 'test-client-id'
+          GOOGLE_ADS_CLIENT_SECRET: 'test-client-secret'
+          GOOGLE_ADS_DEVELOPER_TOKEN: 'test-developer-token'
+          GOOGLE_ADS_CUSTOMER_ID: 'test-customer-id'
+          GOOGLE_ADS_REFRESH_TOKEN: 'test-refresh-token'
+          
+      - name: Verify coverage thresholds
+        run: |
+          echo "Checking coverage thresholds (minimum 70%)..."
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+            const coverage = require('./coverage/coverage-summary.json');
+            const total = coverage.total;
+            const metrics = ['lines', 'statements', 'functions', 'branches'];
+            let failed = false;
+            metrics.forEach(metric => {
+              const pct = total[metric].pct;
+              console.log(\`\${metric}: \${pct}%\`);
+              if (pct < 70) {
+                console.error(\`ERROR: \${metric} coverage (\${pct}%) is below 70% threshold\`);
+                failed = true;
+              }
+            });
+            if (failed) process.exit(1);
+            console.log('All coverage thresholds met!');
+            "
+          else
+            echo "WARNING: coverage-summary.json not found"
+          fi
+          
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true
+        
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: romeovs/lcov-reporter-action@v0.3.1
+        with:
+          lcov-file: ./coverage/lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          title: Coverage Report
+        continue-on-error: true
+        
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://test.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key' }}
+          
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: .next/
+          retention-days: 7
+
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: [build, coverage]
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Deploy to Vercel Preview
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+        continue-on-error: true
