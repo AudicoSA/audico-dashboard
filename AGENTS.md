@@ -64,3 +64,77 @@ Located in `services/workflows/visual-content-automation.ts`, this module provid
 - `POST /api/webhooks/reseller-approved` - Auto-triggered by database changes
 
 See `services/workflows/README.md` for detailed documentation.
+
+## White-Label Multi-Tenant System
+
+### Overview
+
+Mission Control now supports white-label multi-tenant deployments for approved resellers. Each tenant gets:
+- Custom subdomain (`reseller-name.audico-platform.com`)
+- Branded interface (logo, colors, fonts)
+- Isolated product catalog with markup pricing
+- Territory-scoped customer management
+- Dedicated agent instances
+- Secure API access
+
+### Admin Portal
+
+**Tenant Management:** `/admin-portal/tenants`
+- Create and manage tenants
+- Configure branding and features
+- Set markup pricing
+- Generate API keys
+- Monitor usage and billing
+
+### Tenant Portal
+
+**Subdomain Access:** `https://subdomain.audico-platform.com`
+- Branded dashboard
+- Product catalog
+- Customer management
+- API settings
+
+### Integration API
+
+**Base URL:** `https://audico-platform.com/api/v1`
+
+**Endpoints:**
+- `GET /api/v1/products` - List products
+- `GET /api/v1/customers` - List customers
+- `POST /api/v1/customers` - Create customer
+- `GET /api/v1/orders` - List orders
+- `POST /api/v1/orders` - Create order
+
+**Authentication:** Bearer token (API key)
+
+### Documentation
+
+- **Complete Guide:** `WHITE_LABEL_MULTI_TENANT.md`
+- **Quick Start:** `WHITE_LABEL_QUICKSTART.md`
+- **API Reference:** `TENANT_API_DOCUMENTATION.md`
+- **Implementation Summary:** `WHITE_LABEL_IMPLEMENTATION_SUMMARY.md`
+
+### Database Schema
+
+Migration: `supabase/migrations/009_white_label_multi_tenant.sql`
+
+**Core Tables:**
+- `reseller_tenants` - Tenant configuration
+- `tenant_products` - Product catalog with markup
+- `tenant_customers` - Customer management
+- `tenant_orders` - Order tracking
+- `tenant_agents` - Dedicated agent instances
+- `tenant_api_keys` - API key management
+- `tenant_usage_metrics` - Billing metrics
+- `tenant_audit_log` - Security audit trail
+
+### Key Features
+
+✅ Complete tenant isolation with RLS  
+✅ Customizable branding  
+✅ Markup-based pricing  
+✅ Territory-scoped customers  
+✅ Dedicated agent instances  
+✅ Secure API access  
+✅ Usage tracking for billing  
+✅ Comprehensive admin portal  

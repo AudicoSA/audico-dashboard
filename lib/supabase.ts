@@ -685,3 +685,184 @@ export type DataAccessRequest = {
   created_at: string
   updated_at: string
 }
+
+export type ResellerTenant = {
+  id: string
+  reseller_id: string
+  tenant_slug: string
+  company_name: string
+  subdomain: string
+  custom_domain: string | null
+  custom_domain_verified: boolean
+  branding_config: {
+    logo_url: string | null
+    favicon_url: string | null
+    primary_color: string
+    secondary_color: string
+    accent_color: string
+    font_family: string
+  }
+  features_enabled: {
+    dashboard: boolean
+    products: boolean
+    customers: boolean
+    orders: boolean
+    analytics: boolean
+    support: boolean
+    agents: boolean
+    social_media: boolean
+    email_automation: boolean
+    marketing: boolean
+  }
+  assigned_territories: any[]
+  assigned_product_categories: any[]
+  product_markup_percentage: number
+  plan_tier: 'basic' | 'professional' | 'enterprise'
+  monthly_fee: number
+  billing_status: 'active' | 'suspended' | 'cancelled' | 'trial'
+  trial_ends_at: string | null
+  status: 'active' | 'inactive' | 'suspended' | 'pending_setup'
+  onboarding_completed: boolean
+  settings: any
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TenantApiKey = {
+  id: string
+  tenant_id: string
+  key_name: string
+  key_prefix: string
+  key_hash: string
+  permissions: {
+    read_products: boolean
+    write_products: boolean
+    read_customers: boolean
+    write_customers: boolean
+    read_orders: boolean
+    write_orders: boolean
+    manage_agents: boolean
+  }
+  last_used_at: string | null
+  usage_count: number
+  rate_limit_per_minute: number
+  is_active: boolean
+  expires_at: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TenantCustomer = {
+  id: string
+  tenant_id: string
+  customer_id: string
+  full_name: string | null
+  email: string | null
+  phone: string | null
+  company_name: string | null
+  territory: string | null
+  assigned_territory: any
+  customer_data: any
+  tags: string[]
+  status: 'active' | 'inactive' | 'blocked'
+  total_orders: number
+  total_spent: number
+  last_order_date: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TenantProduct = {
+  id: string
+  tenant_id: string
+  product_id: string
+  base_price: number
+  markup_percentage: number | null
+  custom_price: number | null
+  final_price: number
+  is_visible: boolean
+  is_available: boolean
+  stock_override: number | null
+  custom_name: string | null
+  custom_description: string | null
+  custom_images: any[]
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TenantOrder = {
+  id: string
+  tenant_id: string
+  order_number: string
+  customer_id: string | null
+  order_date: string
+  status: 'pending' | 'processing' | 'completed' | 'cancelled' | 'refunded'
+  subtotal: number
+  tax: number
+  shipping: number
+  total: number
+  currency: string
+  items: any[]
+  shipping_address: any
+  billing_address: any
+  fulfillment_status: 'unfulfilled' | 'partial' | 'fulfilled'
+  tracking_number: string | null
+  shipped_at: string | null
+  delivered_at: string | null
+  notes: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TenantAgent = {
+  id: string
+  tenant_id: string
+  agent_name: string
+  agent_type: 'email' | 'social' | 'marketing' | 'support' | 'sales'
+  config: any
+  is_enabled: boolean
+  total_actions: number
+  last_active_at: string | null
+  performance_metrics: any
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TenantUsageMetrics = {
+  id: string
+  tenant_id: string
+  metric_date: string
+  api_calls: number
+  agent_actions: number
+  customers_managed: number
+  orders_processed: number
+  storage_used_mb: number
+  email_agent_actions: number
+  social_agent_actions: number
+  marketing_agent_actions: number
+  support_agent_actions: number
+  estimated_cost: number
+  metadata: any
+  created_at: string
+}
+
+export type TenantAuditLog = {
+  id: string
+  tenant_id: string
+  user_id: string | null
+  action_type: string
+  resource_type: string | null
+  resource_id: string | null
+  action_details: any
+  ip_address: string | null
+  user_agent: string | null
+  success: boolean
+  error_message: string | null
+  created_at: string
+}
