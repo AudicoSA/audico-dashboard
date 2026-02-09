@@ -384,62 +384,52 @@ export type SquadAgent = {
   created_at: string
 }
 
-export type NotebookLMConfig = {
+export type QuoteChatSession = {
   id: string
-  google_cloud_project_id: string | null
-  service_account_json: any | null
-  python_path: string | null
-  notebooklm_py_installed: boolean
-  connection_tested: boolean
-  last_test_date: string | null
-  created_at: string
-  updated_at: string
-}
-
-export type NotebookLMNotebook = {
-  id: string
-  name: string
-  notebook_id: string
-  purpose: string | null
-  google_cloud_project_id: string | null
-  sources: string[]
-  source_count: number
-  sources_count: number
-  status: 'active' | 'inactive' | 'archived' | 'error'
-  statistics: {
-    queries_count: number
-    artifacts_generated: number
-    last_activity: string | null
-  }
+  session_id: string
+  customer_name: string | null
+  customer_email: string | null
+  customer_phone: string | null
+  company_name: string | null
+  status: 'active' | 'pending_quote' | 'quote_sent' | 'completed' | 'abandoned'
+  messages: any[]
+  quote_items: any[]
+  total_amount: number | null
+  currency: string
   metadata: any
   created_at: string
   updated_at: string
-  last_updated: string
+  last_activity_at: string
 }
 
-export type NotebookLMArtifact = {
+export type QuoteChatMessage = {
   id: string
-  notebook_id: string
-  artifact_type: 'infographic' | 'slide_deck' | 'video_overview' | 'mind_map'
-  storage_path: string | null
-  thumbnail_url: string | null
-  generation_prompt: string | null
-  status: 'pending' | 'generating' | 'completed' | 'failed' | 'archived'
-  linked_social_post_id: string | null
-  linked_newsletter_id: string | null
+  session_id: string
+  sender_type: 'customer' | 'agent' | 'system'
+  sender_name: string | null
+  message: string
+  attachments: string[]
   metadata: any
   created_at: string
-  updated_at: string
 }
 
-export type NotebookLMUsage = {
+export type QuoteRequest = {
   id: string
-  api_calls_count: number
-  storage_used_mb: number
-  artifact_history: {
-    date: string
-    count: number
-  }[]
+  session_id: string | null
+  email_id: string | null
+  customer_name: string
+  customer_email: string
+  customer_phone: string | null
+  company_name: string | null
+  items: any[]
+  notes: string | null
+  status: 'pending' | 'processing' | 'sent' | 'accepted' | 'rejected'
+  quote_number: string | null
+  quote_amount: number | null
+  quote_pdf_url: string | null
+  valid_until: string | null
+  generated_by: string | null
+  metadata: any
   created_at: string
   updated_at: string
 }

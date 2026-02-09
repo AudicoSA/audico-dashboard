@@ -1,18 +1,17 @@
 export { SocialMediaAgent, socialAgent } from './social-agent'
-export { default as MarketingAgent } from './marketing-agent'
+export { GoogleAdsAgent, adsAgent } from './ads-agent'
 export type {
   SocialPostDraft,
   ProductCatalogItem,
   SocialPost,
   SocialAgentRequest,
   SocialAgentResponse,
-  ScheduledPostingResult,
-  GooglePlaceResult,
-  Product,
-  ProductWithResellerPrice,
-  NewsletterDraft,
-  InfluencerOpportunity,
-  TrendingProduct,
-  MarketingAgentAction
+  ScheduledPostingResult
 } from './types'
+export type {
+  AdCampaign,
+  CampaignPerformance,
+  BidAdjustmentSuggestion,
+  AdsAgentConfig
+} from './ads-agent'
 export * from './utils'
