@@ -433,3 +433,89 @@ export type QuoteRequest = {
   created_at: string
   updated_at: string
 }
+
+export type SocialInteraction = {
+  id: string
+  platform: 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'tiktok' | 'youtube'
+  interaction_type: 'mention' | 'dm' | 'comment' | 'reply' | 'share' | 'reaction'
+  customer_name: string | null
+  customer_email: string | null
+  customer_handle: string | null
+  customer_id: string | null
+  content: string
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed' | null
+  post_url: string | null
+  requires_response: boolean
+  response_status: 'pending' | 'responded' | 'ignored'
+  responded_at: string | null
+  responded_by: string | null
+  metadata: any
+  interaction_date: string
+  created_at: string
+  updated_at: string
+}
+
+export type OpenCartOrder = {
+  id: string
+  order_id: number
+  customer_id: number
+  customer_name: string
+  customer_email: string
+  customer_phone: string | null
+  order_status: string
+  order_total: number
+  currency: string
+  payment_method: string | null
+  shipping_method: string | null
+  items: any[]
+  shipping_address: any
+  order_date: string
+  last_updated: string
+  metadata: any
+  created_at: string
+}
+
+export type CustomerProfile = {
+  id: string
+  customer_id: string
+  primary_email: string | null
+  primary_phone: string | null
+  full_name: string | null
+  company_name: string | null
+  contact_emails: string[]
+  contact_phones: string[]
+  social_handles: any
+  total_orders: number
+  total_spent: number
+  average_order_value: number
+  lifetime_value: number
+  first_interaction_date: string | null
+  last_interaction_date: string | null
+  last_order_date: string | null
+  customer_status: 'active' | 'inactive' | 'vip' | 'blocked'
+  sentiment_score: number
+  sentiment_trend: 'improving' | 'stable' | 'declining' | null
+  interaction_count: number
+  tags: string[]
+  notes: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type TimelineInteraction = {
+  source: 'call' | 'email' | 'chat' | 'social' | 'order'
+  id: string
+  customer_id: string
+  customer_name: string | null
+  customer_email: string | null
+  customer_phone: string | null
+  interaction_date: string
+  interaction_type: string
+  subject: string | null
+  summary: string | null
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed' | null
+  outcome: string | null
+  metadata: any
+  created_at: string
+}

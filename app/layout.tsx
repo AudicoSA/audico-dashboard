@@ -47,6 +47,7 @@ export default function RootLayout({
               <NavItem href="/social" icon={<Share2 size={22} />} label="Social Media" />
               <NavItem href="/kait" icon={<Bot size={22} />} label="Kait's Desk" />
               <MissionControlNavItem />
+              <NavItem href="/timeline" icon={<Activity size={22} />} label="Customer Timeline" />
               <NavItem href="/whatsapp" icon={<MessageCircle size={22} />} label="WhatsApp" />
               <NavItem href="/resilience" icon={<Activity size={22} />} label="API Resilience" />
               <NavItem href="/logs" icon={<FileText size={22} />} label="System Logs" />

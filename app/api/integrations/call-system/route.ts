@@ -35,6 +35,49 @@ async function logToSquadMessages(fromAgent: string, message: string, data: any 
     })
 }
 
+async function syncCallToTimeline(callData: CallTranscriptWebhookPayload, transcriptId: string) {
+  const customerId = callData.customer_email || callData.customer_phone
+
+  const { error } = await supabase.from('customer_interactions').insert({
+    customer_id: customerId,
+    customer_name: callData.customer_name || null,
+    customer_email: callData.customer_email || null,
+    customer_phone: callData.customer_phone,
+    interaction_type: 'call',
+    interaction_source: 'audico-call-system',
+    interaction_date: callData.call_start_time,
+    subject: callData.customer_intent || 'Phone Call',
+    summary: callData.summary || null,
+    sentiment: callData.sentiment || null,
+    outcome: callData.call_outcome || null,
+    priority: callData.call_outcome === 'escalation' ? 'urgent' : 'medium',
+    status:
+      callData.call_outcome === 'resolved'
+        ? 'completed'
+        : callData.call_outcome === 'follow_up_needed'
+        ? 'follow_up_required'
+        : 'pending',
+    reference_id: transcriptId,
+    reference_type: 'call_transcript',
+    details: {
+      call_id: callData.call_id,
+      call_duration: callData.call_duration,
+      key_topics: callData.key_topics || [],
+      ...callData.metadata,
+    },
+  })
+
+  if (error) {
+    console.error('Error syncing call to timeline:', error)
+  }
+
+  if (callData.customer_email) {
+    await supabase.rpc('update_customer_profile_stats', {
+      p_customer_id: callData.customer_email,
+    })
+  }
+}
+
 async function generateFollowUpTasks(callData: CallTranscriptWebhookPayload, transcriptId: string) {
   const tasks: Array<{
     title: string
