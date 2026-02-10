@@ -37,26 +37,39 @@ export default function DraftPreviewPage() {
 
   async function fetchDraft() {
     try {
-      // Fetch email log
-      const { data: emailData, error: emailError } = await supabase
-        .from('email_logs')
-        .select('*')
-        .eq('id', emailId)
-        .single()
-
-      if (emailError) throw emailError
-
-      setEmail(emailData)
-
-      // Fetch associated task
+      // First, try to fetch the task by metadata email_id
       const { data: taskData, error: taskError } = await supabase
         .from('squad_tasks')
         .select('*')
         .eq('metadata->>email_id', emailId)
-        .single()
+        .maybeSingle()
 
-      if (!taskError && taskData) {
+      if (taskData) {
         setTask(taskData)
+      }
+
+      // Then try to fetch email log (might not exist for test tasks)
+      const { data: emailData, error: emailError } = await supabase
+        .from('email_logs')
+        .select('*')
+        .eq('id', emailId)
+        .maybeSingle()
+
+      // If no email log found but we have a task, create a mock email from task metadata
+      if (!emailData && taskData) {
+        setEmail({
+          id: emailId,
+          from_email: taskData.metadata?.from_email || 'Test Email',
+          subject: taskData.metadata?.subject || taskData.title,
+          category: taskData.metadata?.email_category || 'test',
+          status: 'draft',
+          payload: { body: 'Preview not available for test tasks' },
+          created_at: taskData.created_at
+        } as EmailLog)
+      } else if (emailData) {
+        setEmail(emailData)
+      } else {
+        throw new Error('Email not found')
       }
 
       setLoading(false)
@@ -78,12 +91,12 @@ export default function DraftPreviewPage() {
     )
   }
 
-  if (error || !email) {
+  if (error || (!email && !task)) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="max-w-md mx-auto p-6 bg-red-500/10 border border-red-500/30 rounded-xl">
           <h2 className="text-xl font-bold text-red-400 mb-2">Error Loading Draft</h2>
-          <p className="text-gray-300">{error || 'Email not found'}</p>
+          <p className="text-gray-300">{error || 'Email or task not found'}</p>
           <button
             onClick={() => router.push('/squad')}
             className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
