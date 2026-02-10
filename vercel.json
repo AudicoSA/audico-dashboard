@@ -23,7 +23,7 @@
     {
       "path": "/api/cron/maintenance/cleanup",
       "schedule": "0 2 * * *"
-    },
+    }
   ],
   "rewrites": [
     {
