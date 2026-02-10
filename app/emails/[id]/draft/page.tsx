@@ -109,7 +109,7 @@ export default function DraftPreviewPage() {
   }
 
   const draftId = task?.metadata?.draft_id
-  const category = email.category || 'unknown'
+  const category = email?.category || 'unknown'
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
@@ -127,38 +127,40 @@ export default function DraftPreviewPage() {
         </div>
 
         {/* Email Info */}
-        <div className="bg-[#1c1c1c] border border-white/10 rounded-xl p-6 mb-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-gray-500">From</label>
-              <p className="text-white font-medium">{email.from_email}</p>
-            </div>
-            <div>
-              <label className="text-sm text-gray-500">Category</label>
-              <p className="text-white">
-                <span className={`inline-block px-2 py-1 rounded text-xs ${
-                  category === 'complaint' ? 'bg-red-500/20 text-red-400' :
-                  category === 'order' ? 'bg-blue-500/20 text-blue-400' :
-                  category === 'support' ? 'bg-purple-500/20 text-purple-400' :
-                  'bg-gray-500/20 text-gray-400'
-                }`}>
-                  {category}
-                </span>
-              </p>
-            </div>
-            <div className="col-span-2">
-              <label className="text-sm text-gray-500">Subject</label>
-              <p className="text-white font-medium">{email.subject}</p>
-            </div>
-            <div className="col-span-2">
-              <label className="text-sm text-gray-500">Status</label>
-              <p className="text-white">{email.status}</p>
+        {email && (
+          <div className="bg-[#1c1c1c] border border-white/10 rounded-xl p-6 mb-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-gray-500">From</label>
+                <p className="text-white font-medium">{email.from_email}</p>
+              </div>
+              <div>
+                <label className="text-sm text-gray-500">Category</label>
+                <p className="text-white">
+                  <span className={`inline-block px-2 py-1 rounded text-xs ${
+                    category === 'complaint' ? 'bg-red-500/20 text-red-400' :
+                    category === 'order' ? 'bg-blue-500/20 text-blue-400' :
+                    category === 'support' ? 'bg-purple-500/20 text-purple-400' :
+                    'bg-gray-500/20 text-gray-400'
+                  }`}>
+                    {category}
+                  </span>
+                </p>
+              </div>
+              <div className="col-span-2">
+                <label className="text-sm text-gray-500">Subject</label>
+                <p className="text-white font-medium">{email.subject}</p>
+              </div>
+              <div className="col-span-2">
+                <label className="text-sm text-gray-500">Status</label>
+                <p className="text-white">{email.status}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Original Email */}
-        {email.payload?.body && (
+        {email?.payload?.body && (
           <div className="bg-[#1c1c1c] border border-white/10 rounded-xl p-6 mb-6">
             <h3 className="text-lg font-semibold mb-4 text-lime-400">Original Email</h3>
             <div className="bg-black/50 rounded-lg p-4 max-h-64 overflow-y-auto">
