@@ -24,10 +24,6 @@
       "path": "/api/cron/maintenance/cleanup",
       "schedule": "0 2 * * *"
     },
-    {
-      "path": "/api/cron/quote-chat/sync",
-      "schedule": "0 */4 * * *"
-    }
   ],
   "rewrites": [
     {
