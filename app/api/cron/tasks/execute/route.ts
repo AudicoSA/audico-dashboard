@@ -1,3 +1,4 @@
+import { verifyCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
 /**
  * Task Execution Cron Job
  *
@@ -20,9 +21,8 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
   // 1. Verify cron secret
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
   }
 
   console.log('[CRON] Task executor started')
@@ -103,9 +103,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   // Verify cron secret
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!verifyCronRequest(request)) { return unauthorizedResponse() }
   }
 
   const enabled = process.env.ENABLE_AUTO_EXECUTION === 'true'
