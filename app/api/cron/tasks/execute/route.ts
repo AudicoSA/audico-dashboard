@@ -74,18 +74,18 @@ export async function POST(request: NextRequest) {
       duration_ms: duration,
       rate_limit: {
         remaining: rateLimit.remaining,
-        max: rateLimit.max
+        resetAt: rateLimit.resetAt
       }
     })
   } catch (error: any) {
     console.error('[CRON] Task executor error:', error)
 
     await logAgentActivity({
-      agent_name: 'Task Executor',
-      event_type: 'cron_error',
-      log_level: 'error',
+      agentName: 'Task Executor',
+      eventType: 'cron_error',
+      logLevel: 'error',
       message: `Task executor failed: ${error.message}`,
-      metadata: { error: error.message, stack: error.stack }
+      errorDetails: { error: error.message, stack: error.stack }
     })
 
     return NextResponse.json(
