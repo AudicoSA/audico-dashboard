@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
     )
 
     const processedMessages = []
+    let inserted = 0
+    let skipped = 0
+    let insertErrors = 0
 
     for (const message of messages) {
       const fullMessage = await gmail.users.messages.get({
@@ -126,13 +129,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const { data: existingEmail, error: checkError } = await supabase
+      // Check if email already exists (use maybeSingle to avoid error on 0 rows)
+      const { data: existingEmail } = await supabase
         .from('email_logs')
         .select('id')
         .eq('gmail_message_id', message.id!)
-        .single()
+        .maybeSingle()
 
-      if (!existingEmail) {
+      if (existingEmail) {
+        skipped++
+      } else {
         const { data: emailLog, error: insertError } = await supabase
           .from('email_logs')
           .insert({
@@ -151,7 +157,16 @@ export async function POST(request: NextRequest) {
           .select()
           .single()
 
-        if (!insertError) {
+        if (insertError) {
+          insertErrors++
+          console.error(`❌ Failed to insert email "${subject}":`, insertError.message)
+          await logToSquadMessages(
+            'email_agent',
+            `❌ INSERT FAILED for "${subject}" from ${from}: ${insertError.message}`,
+            { action: 'email_insert_error', gmail_message_id: message.id, error: insertError.message }
+          )
+        } else {
+          inserted++
           await logToSquadMessages(
             'email_agent',
             `New email logged: ${subject} from ${from}`,
@@ -168,9 +183,20 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    if (insertErrors > 0) {
+      await logToSquadMessages(
+        'email_agent',
+        `⚠️ Poll complete: ${inserted} inserted, ${skipped} skipped, ${insertErrors} FAILED`,
+        { action: 'poll_summary', inserted, skipped, insertErrors }
+      )
+    }
+
     return NextResponse.json({
       success: true,
       messagesFound: messages.length,
+      inserted,
+      skipped,
+      insertErrors,
       messages: processedMessages,
       remaining: rateLimit.remaining,
     })

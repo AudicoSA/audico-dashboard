@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
           .from('email_logs')
           .update({
             category,
+            priority,
             status: 'classified',
             updated_at: new Date().toISOString(),
           })
@@ -173,7 +174,13 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (updateError) {
-          failed.push({ id: emailLog.id, error: updateError.message })
+          console.error(`❌ Failed to classify email "${emailLog.subject}":`, updateError.message)
+          failed.push({ id: emailLog.id, subject: emailLog.subject, error: updateError.message })
+          await logToSquadMessages(
+            'Email Agent',
+            `❌ CLASSIFY FAILED for "${emailLog.subject}": ${updateError.message}`,
+            { action: 'classify_update_error', email_id: emailLog.id, error: updateError.message }
+          )
           continue
         }
 

@@ -1,3 +1,4 @@
+import { verifyCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
@@ -89,10 +90,17 @@ function createEmailMessage(to: string, subject: string, body: string, inReplyTo
   return Buffer.from(message).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+export async function GET() {
+  return NextResponse.json({
+    status: 'email-respond-route-active',
+    message: 'Use POST with Authorization: Bearer CRON_SECRET and JSON body {email_id}',
+    timestamp: new Date().toISOString()
+  })
+}
+
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
   }
 
   try {
@@ -206,39 +214,46 @@ export async function POST(request: NextRequest) {
       })
 
       if (taskError) {
-        console.error('Failed to create auto-send task:', taskError)
+        console.error('❌ Failed to create auto-send task:', taskError)
+        await logToSquadMessages(
+          'email_agent',
+          `❌ TASK CREATION FAILED for "${emailLog.subject}": ${taskError.message}`,
+          { action: 'task_create_error', email_id: emailLog.id, error: taskError.message }
+        )
+        // Don't update email_logs - task doesn't exist so email would be orphaned
       } else {
         taskCreated = true
-      }
 
-      const { error: updateError } = await supabase
-        .from('email_logs')
-        .update({
-          status: 'scheduled',
-          handled_by: 'email_agent',
-          metadata: {
-            ...emailLog.metadata,
-            scheduled_for: scheduledSendTime.toISOString(),
-            draft_id: draftResponse.data.id
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', emailLog.id)
+        // Only update email status AFTER task is successfully created
+        const { error: updateError } = await supabase
+          .from('email_logs')
+          .update({
+            status: 'scheduled',
+            handled_by: 'Email Agent',
+            metadata: {
+              ...emailLog.metadata,
+              scheduled_for: scheduledSendTime.toISOString(),
+              draft_id: draftResponse.data.id
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', emailLog.id)
 
-      if (updateError) {
-        console.error('Failed to update email log:', updateError)
-      }
-
-      await logToSquadMessages(
-        'email_agent',
-        `📧 Email response scheduled for auto-send in 1 hour: ${emailLog.subject}`,
-        {
-          email_id: emailLog.id,
-          draft_id: draftResponse.data.id,
-          auto_send: true,
-          scheduled_for: scheduledSendTime.toISOString()
+        if (updateError) {
+          console.error('❌ Failed to update email log:', updateError)
         }
-      )
+
+        await logToSquadMessages(
+          'email_agent',
+          `📧 Email response scheduled for auto-send in 1 hour: ${emailLog.subject}`,
+          {
+            email_id: emailLog.id,
+            draft_id: draftResponse.data.id,
+            auto_send: true,
+            scheduled_for: scheduledSendTime.toISOString()
+          }
+        )
+      }
 
     } else if (approvalCategories.includes(emailCategory)) {
       // Create approval task for Kenny
@@ -259,38 +274,45 @@ export async function POST(request: NextRequest) {
       })
 
       if (taskError) {
-        console.error('Failed to create approval task:', taskError)
+        console.error('❌ Failed to create approval task:', taskError)
+        await logToSquadMessages(
+          'email_agent',
+          `❌ APPROVAL TASK CREATION FAILED for "${emailLog.subject}": ${taskError.message}`,
+          { action: 'task_create_error', email_id: emailLog.id, error: taskError.message }
+        )
+        // Don't update email_logs - task doesn't exist so email would be orphaned
       } else {
         taskCreated = true
-      }
 
-      const { error: updateError } = await supabase
-        .from('email_logs')
-        .update({
-          status: 'awaiting_approval',
-          handled_by: 'email_agent',
-          metadata: {
-            ...emailLog.metadata,
-            draft_id: draftResponse.data.id
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', emailLog.id)
+        // Only update email status AFTER task is successfully created
+        const { error: updateError } = await supabase
+          .from('email_logs')
+          .update({
+            status: 'awaiting_approval',
+            handled_by: 'Email Agent',
+            metadata: {
+              ...emailLog.metadata,
+              draft_id: draftResponse.data.id
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', emailLog.id)
 
-      if (updateError) {
-        console.error('Failed to update email log:', updateError)
-      }
-
-      await logToSquadMessages(
-        'email_agent',
-        `⏸️ Email response requires approval: ${emailLog.subject}`,
-        {
-          email_id: emailLog.id,
-          draft_id: draftResponse.data.id,
-          requires_approval: true,
-          category: emailCategory
+        if (updateError) {
+          console.error('❌ Failed to update email log:', updateError)
         }
-      )
+
+        await logToSquadMessages(
+          'email_agent',
+          `⏸️ Email response requires approval: ${emailLog.subject}`,
+          {
+            email_id: emailLog.id,
+            draft_id: draftResponse.data.id,
+            requires_approval: true,
+            category: emailCategory
+          }
+        )
+      }
 
     } else {
       // For 'other' category, just create draft without task
@@ -298,7 +320,7 @@ export async function POST(request: NextRequest) {
         .from('email_logs')
         .update({
           status: 'draft_created',
-          handled_by: 'email_agent',
+          handled_by: 'Email Agent',
           metadata: {
             ...emailLog.metadata,
             draft_id: draftResponse.data.id
