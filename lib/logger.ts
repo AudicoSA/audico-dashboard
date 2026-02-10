@@ -46,3 +46,30 @@ async function triggerAlert(params: {
     console.error('Failed to trigger alert:', error)
   }
 }
+
+/**
+ * Log a message to the squad_messages table for squad dashboard visibility
+ */
+export async function logToSquadMessages(
+  fromAgent: string,
+  message: string,
+  data: any = null,
+  toAgent: string | null = null,
+  taskId: string | null = null
+) {
+  const supabase = getServerSupabase()
+
+  const { error } = await supabase
+    .from('squad_messages')
+    .insert({
+      from_agent: fromAgent,
+      to_agent: toAgent,
+      message,
+      task_id: taskId,
+      data,
+    })
+
+  if (error) {
+    console.error('Failed to log squad message:', error)
+  }
+}

@@ -178,36 +178,157 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const { error: updateError } = await supabase
-      .from('email_logs')
-      .update({
-        status: 'draft_created',
-        handled_by: 'email_agent',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', emailLog.id)
+    // Determine if auto-send or require approval
+    const emailCategory = emailLog.category || 'other'
+    const autoSendCategories = ['inquiry', 'spam']
+    const approvalCategories = ['order', 'support', 'complaint']
 
-    if (updateError) {
-      console.error('Failed to update email log:', updateError)
+    let taskCreated = false
+
+    if (autoSendCategories.includes(emailCategory)) {
+      // Auto-send after 1 hour delay (gives Kenny review window)
+      const scheduledSendTime = new Date(Date.now() + 3600000) // 1 hour from now
+
+      const { error: taskError } = await supabase.from('squad_tasks').insert({
+        title: `Send email to ${emailLog.from_email}`,
+        description: `Auto-send email response (${emailCategory}):\n\nSubject: ${emailLog.subject}\n\n${responseBody.substring(0, 300)}...`,
+        status: 'new',
+        assigned_agent: 'Email Agent',
+        priority: 'low',
+        requires_approval: false, // Auto-execute
+        metadata: {
+          email_id: emailLog.id,
+          draft_id: draftResponse.data.id,
+          email_category: emailCategory,
+          scheduled_for: scheduledSendTime.toISOString()
+        },
+        deliverable_url: `/emails/${emailLog.id}/draft`
+      })
+
+      if (taskError) {
+        console.error('Failed to create auto-send task:', taskError)
+      } else {
+        taskCreated = true
+      }
+
+      const { error: updateError } = await supabase
+        .from('email_logs')
+        .update({
+          status: 'scheduled',
+          handled_by: 'email_agent',
+          metadata: {
+            ...emailLog.metadata,
+            scheduled_for: scheduledSendTime.toISOString(),
+            draft_id: draftResponse.data.id
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', emailLog.id)
+
+      if (updateError) {
+        console.error('Failed to update email log:', updateError)
+      }
+
+      await logToSquadMessages(
+        'email_agent',
+        `📧 Email response scheduled for auto-send in 1 hour: ${emailLog.subject}`,
+        {
+          email_id: emailLog.id,
+          draft_id: draftResponse.data.id,
+          auto_send: true,
+          scheduled_for: scheduledSendTime.toISOString()
+        }
+      )
+
+    } else if (approvalCategories.includes(emailCategory)) {
+      // Create approval task for Kenny
+      const { error: taskError } = await supabase.from('squad_tasks').insert({
+        title: `Approve email response to ${emailLog.from_email}`,
+        description: `Category: ${emailCategory}\nSubject: ${emailLog.subject}\n\nPreview:\n${responseBody.substring(0, 300)}...`,
+        status: 'new',
+        assigned_agent: 'Email Agent',
+        priority: emailCategory === 'complaint' ? 'urgent' : 'high',
+        mentions_kenny: true,
+        requires_approval: true,
+        metadata: {
+          email_id: emailLog.id,
+          draft_id: draftResponse.data.id,
+          email_category: emailCategory
+        },
+        deliverable_url: `/emails/${emailLog.id}/draft`
+      })
+
+      if (taskError) {
+        console.error('Failed to create approval task:', taskError)
+      } else {
+        taskCreated = true
+      }
+
+      const { error: updateError } = await supabase
+        .from('email_logs')
+        .update({
+          status: 'awaiting_approval',
+          handled_by: 'email_agent',
+          metadata: {
+            ...emailLog.metadata,
+            draft_id: draftResponse.data.id
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', emailLog.id)
+
+      if (updateError) {
+        console.error('Failed to update email log:', updateError)
+      }
+
+      await logToSquadMessages(
+        'email_agent',
+        `⏸️ Email response requires approval: ${emailLog.subject}`,
+        {
+          email_id: emailLog.id,
+          draft_id: draftResponse.data.id,
+          requires_approval: true,
+          category: emailCategory
+        }
+      )
+
+    } else {
+      // For 'other' category, just create draft without task
+      const { error: updateError } = await supabase
+        .from('email_logs')
+        .update({
+          status: 'draft_created',
+          handled_by: 'email_agent',
+          metadata: {
+            ...emailLog.metadata,
+            draft_id: draftResponse.data.id
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', emailLog.id)
+
+      if (updateError) {
+        console.error('Failed to update email log:', updateError)
+      }
+
+      await logToSquadMessages(
+        'email_agent',
+        `Draft created for: ${emailLog.subject}`,
+        {
+          action: 'respond_complete',
+          email_id: emailLog.id,
+          draft_id: draftResponse.data.id,
+          to: emailLog.from_email,
+        }
+      )
     }
 
     await logAgentExecution('email_respond', {
       email_id: emailLog.id,
       draft_id: draftResponse.data.id,
       status: 'completed',
+      task_created: taskCreated,
     })
-
-    await logToSquadMessages(
-      'email_agent',
-      `Draft created for: ${emailLog.subject}`,
-      {
-        action: 'respond_complete',
-        email_id: emailLog.id,
-        draft_id: draftResponse.data.id,
-        to: emailLog.from_email,
-        remaining: rateLimit.remaining,
-      }
-    )
 
     return NextResponse.json({
       success: true,
