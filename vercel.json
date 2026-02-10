@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/tasks/execute",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/agents/jarvis/orchestrate",
       "schedule": "*/10 * * * *"
     },

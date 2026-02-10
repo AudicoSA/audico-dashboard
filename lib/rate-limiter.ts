@@ -119,6 +119,11 @@ export async function logAgentExecution(
 }
 
 export const AGENT_RATE_LIMITS: Record<string, RateLimitConfig> = {
+  task_executor: {
+    agentName: 'task_executor',
+    maxExecutions: 720,
+    windowSeconds: 86400,
+  },
   email_poll: {
     agentName: 'email_poll',
     maxExecutions: 96,
@@ -132,6 +137,26 @@ export const AGENT_RATE_LIMITS: Record<string, RateLimitConfig> = {
   email_respond: {
     agentName: 'email_respond',
     maxExecutions: 50,
+    windowSeconds: 86400,
+  },
+  email_send: {
+    agentName: 'email_send',
+    maxExecutions: 50,
+    windowSeconds: 86400,
+  },
+  social_publish: {
+    agentName: 'social_publish',
+    maxExecutions: 20,
+    windowSeconds: 86400,
+  },
+  newsletter_send: {
+    agentName: 'newsletter_send',
+    maxExecutions: 1,
+    windowSeconds: 86400,
+  },
+  seo_bulk_apply: {
+    agentName: 'seo_bulk_apply',
+    maxExecutions: 5,
     windowSeconds: 86400,
   },
   stock_check: {
