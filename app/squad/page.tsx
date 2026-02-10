@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import VisualContentPanel from './components/VisualContentPanel'
+import ApprovalQueue from './components/ApprovalQueue'
 
 const AGENTS = [
   { id: 'jarvis', name: 'Jarvis', role: 'Master Orchestrator (Claude AI)', color: '#a855f7' },
@@ -408,6 +409,9 @@ export default function MissionControl() {
           </div>
         </motion.div>
       )}
+
+      {/* Approval Queue - Phase 1 & 2 */}
+      <ApprovalQueue />
 
       <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl overflow-hidden">
         <div className="border-b border-white/5 p-1 flex items-center gap-2 overflow-x-auto">
