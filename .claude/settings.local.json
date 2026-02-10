@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(git rm:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:audico-dashboard.vercel.app)",
+      "Bash(npm install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nPhase 2: Email execution with auto-send and approval workflow\n\nImplemented automatic email sending with approval workflows:\n\nFeatures:\n- Gmail Sender Service for sending drafts and emails via Gmail API\n- Email Handler executes sending tasks from task executor\n- Email Respond Route enhanced with auto-send logic\n- Email Sending Endpoint for direct email sending\n\nWorkflow:\n- Inquiry/spam emails: Auto-send after 1 hour delay\n- Order/support/complaint emails: Require approval from Kenny\n- Task executor picks up and executes approved tasks\n\nSafety:\n- Dry-run mode enabled by default \\(AGENT_DRY_RUN=true\\)\n- Rate limiting via Redis \\(50 emails/day\\)\n- All actions logged to squad_messages and agent_logs\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nPhase 1: Core infrastructure for autonomous task execution\n\nImplemented the foundation for agent task execution system:\n\nCore Services:\n- Task Executor: Polls squad_tasks every 2 min, dispatches to handlers\n- Approval Workflow: Safety rules for auto-execute vs require-approval\n- Alert Service: Notifies Kenny of critical events via email/dashboard\n- Execution Handlers: Stubs for email, social, marketing, SEO, ads agents\n\nAPI Endpoints:\n- /api/cron/tasks/execute - Task executor cron job \\(every 2 min\\)\n- /api/tasks/[id]/approve - Approve tasks requiring permission\n- /api/tasks/[id]/reject - Reject tasks with reason\n\nDatabase:\n- Migration 007: execution_attempts, requires_approval, approved_by fields\n- New tables: alerts, dashboard_notifications, agent_configs, execution_snapshots\n\nSafety Features:\n- Retry logic: 3 attempts with exponential backoff, then escalate\n- Rate limiting per operation \\(50 emails/day, 20 posts/day, etc.\\)\n- Dry-run mode support \\(AGENT_DRY_RUN=true\\)\n- Rollback snapshots for failed executions\n\nAuto-Execute Rules:\n- FAQ emails \\(after 1 hour delay\\)\n- Minor SEO fixes \\(<10 products\\)\n- Bid decreases in ads\n\nRequire Approval:\n- Customer emails \\(orders, support, complaints\\)\n- Social media posts\n- Newsletters\n- Bulk changes \\(>10 products\\)\n\nDocumentation:\n- PHASE_1_COMPLETE.md - Phase 1 handover summary\n- FULL_AUTONOMY_IMPLEMENTATION_PLAN.md - Complete 7-phase roadmap\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

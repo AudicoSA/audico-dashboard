@@ -154,6 +154,11 @@ export const AGENT_RATE_LIMITS: Record<string, RateLimitConfig> = {
     maxExecutions: 1,
     windowSeconds: 86400,
   },
+  influencer_outreach: {
+    agentName: 'influencer_outreach',
+    maxExecutions: 10,
+    windowSeconds: 86400,
+  },
   seo_bulk_apply: {
     agentName: 'seo_bulk_apply',
     maxExecutions: 5,

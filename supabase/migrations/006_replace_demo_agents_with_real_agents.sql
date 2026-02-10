@@ -66,3 +66,4 @@ ON CONFLICT DO NOTHING;
 -- ============================================
 
 COMMENT ON TABLE squad_agents IS 'Real working AI agents - Email, Social Media, Google Ads, SEO, Marketing';
+
