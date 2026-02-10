@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: 'Rate limit exceeded',
           remaining: rateLimit.remaining,
-          max: rateLimit.max
+          resetAt: rateLimit.resetAt
         },
         { status: 429 }
       )
