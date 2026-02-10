@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     const response = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 100,
+      maxResults: 30,
       q: 'is:unread',
     })
 
