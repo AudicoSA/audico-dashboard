@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
 
       const headers = fullMessage.data.payload?.headers || []
       const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value || 'unknown'
+      const to = headers.find((h) => h.name?.toLowerCase() === 'to')?.value || 'support@audicoonline.co.za'
       const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value || 'No Subject'
       
       let body = ''
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest) {
           .insert({
             gmail_message_id: message.id!,
             from_email: from,
+            to_email: to,
             subject,
             category: 'unclassified',
             status: 'unread',
