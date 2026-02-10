@@ -21,6 +21,11 @@ ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'medium';
 -- Drop the old constraint
 ALTER TABLE email_logs DROP CONSTRAINT IF EXISTS email_logs_status_check;
 
+-- Clean up any rows with unexpected status values before adding new constraint
+UPDATE email_logs SET status = 'unread'
+WHERE status IS NULL
+   OR status NOT IN ('unread', 'classified', 'draft_created', 'scheduled', 'awaiting_approval', 'handled', 'sent', 'archived');
+
 -- Add new constraint with all needed statuses
 ALTER TABLE email_logs ADD CONSTRAINT email_logs_status_check
   CHECK (status IN ('unread', 'classified', 'draft_created', 'scheduled', 'awaiting_approval', 'handled', 'sent', 'archived'));
@@ -40,6 +45,11 @@ ALTER TABLE squad_tasks ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::js
 
 -- Drop the old constraint
 ALTER TABLE squad_tasks DROP CONSTRAINT IF EXISTS squad_tasks_status_check;
+
+-- Clean up any rows with unexpected status values before adding new constraint
+UPDATE squad_tasks SET status = 'new'
+WHERE status IS NULL
+   OR status NOT IN ('new', 'in_progress', 'completed', 'failed', 'rejected');
 
 -- Add new constraint with all needed statuses
 ALTER TABLE squad_tasks ADD CONSTRAINT squad_tasks_status_check
