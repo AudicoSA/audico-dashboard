@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       supabase
         .from('email_logs')
         .select('*')
-        .eq('status', 'unread')
+        .eq('status', 'classified')
         .order('created_at', { ascending: false })
         .limit(20),
       supabase
