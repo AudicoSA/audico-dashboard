@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
     let inserted = 0
     let skipped = 0
     let insertErrors = 0
+    let lastInsertError = ''
 
     for (const message of messages) {
       const fullMessage = await gmail.users.messages.get({
@@ -159,7 +160,8 @@ export async function POST(request: NextRequest) {
 
         if (insertError) {
           insertErrors++
-          console.error(`❌ Failed to insert email "${subject}":`, insertError.message)
+          lastInsertError = `${insertError.message} (code: ${insertError.code}, details: ${insertError.details}, hint: ${insertError.hint})`
+          console.error(`❌ Failed to insert email "${subject}":`, lastInsertError)
           await logToSquadMessages(
             'email_agent',
             `❌ INSERT FAILED for "${subject}" from ${from}: ${insertError.message}`,
@@ -197,6 +199,7 @@ export async function POST(request: NextRequest) {
       inserted,
       skipped,
       insertErrors,
+      lastInsertError: lastInsertError || undefined,
       messages: processedMessages,
       remaining: rateLimit.remaining,
     })
