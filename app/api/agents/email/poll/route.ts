@@ -148,7 +148,6 @@ export async function POST(request: NextRequest) {
             subject,
             category: 'unclassified',
             status: 'unread',
-            handled_by: null,
             payload: {
               body: body.substring(0, 1000),
               snippet: fullMessage.data.snippet,
