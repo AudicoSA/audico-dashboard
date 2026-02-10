@@ -103,7 +103,8 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   // Verify cron secret
-  if (!verifyCronRequest(request)) { return unauthorizedResponse() }
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
   }
 
   const enabled = process.env.ENABLE_AUTO_EXECUTION === 'true'
