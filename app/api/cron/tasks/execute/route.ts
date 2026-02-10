@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
 
     // 4. Log activity
     await logAgentActivity({
-      agent_name: 'Task Executor',
-      event_type: 'cron_execution',
-      log_level: 'info',
+      agentName: 'Task Executor',
+      eventType: 'cron_execution',
+      logLevel: 'info',
       message: `Executed ${results.executed} tasks, ${results.failed} failed, ${results.skipped} skipped`,
-      metadata: {
+      context: {
         executed: results.executed,
         failed: results.failed,
         skipped: results.skipped,
