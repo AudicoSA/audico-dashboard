@@ -13,6 +13,21 @@ ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jso
 ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'medium';
 
 -- ============================================
+-- FIX 1b: Fix email_logs category CHECK constraint
+-- The manually-added constraint doesn't include 'unclassified'
+-- ============================================
+
+ALTER TABLE email_logs DROP CONSTRAINT IF EXISTS email_logs_category_check;
+ALTER TABLE email_logs ADD CONSTRAINT email_logs_category_check
+  CHECK (category IN ('unclassified', 'order', 'support', 'inquiry', 'complaint', 'spam', 'other'));
+
+-- ============================================
+-- FIX 1c: Make to_email nullable (it was added outside migrations as NOT NULL)
+-- ============================================
+
+ALTER TABLE email_logs ALTER COLUMN to_email DROP NOT NULL;
+
+-- ============================================
 -- FIX 2: Fix email_logs status CHECK constraint
 -- The old constraint only allows: unread, classified, draft_created, sent, archived
 -- But the workflow needs: scheduled, awaiting_approval, handled
