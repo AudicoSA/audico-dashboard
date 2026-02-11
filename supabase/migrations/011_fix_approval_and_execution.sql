@@ -25,7 +25,14 @@ ALTER TABLE squad_tasks ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
 ALTER TABLE squad_tasks ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 
 -- ============================================
--- FIX 3: Create indexes for execution and approval queries
+-- FIX 3: Add handled_by column to email_logs
+-- Referenced by code but never created in any migration
+-- ============================================
+
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS handled_by TEXT;
+
+-- ============================================
+-- FIX 4: Create indexes for execution and approval queries
 -- ============================================
 
 CREATE INDEX IF NOT EXISTS idx_tasks_executable
@@ -110,7 +117,6 @@ SET status = 'classified',
     metadata = metadata - 'error' - 'failed_at' - 'fail_count',
     updated_at = NOW()
 WHERE status = 'handled'
-  AND handled_by = 'Jarvis'
   AND metadata->>'error' LIKE '%Rate limit%';
 
 -- ============================================
