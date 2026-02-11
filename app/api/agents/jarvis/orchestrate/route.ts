@@ -57,25 +57,31 @@ async function createTask(title: string, description: string, assignedAgent: str
  */
 async function triggerEmailResponse(emailId: string): Promise<{ success: boolean; error?: string }> {
   try {
+    // Use production URL to avoid redirect-based auth header stripping
+    // VERCEL_URL gives deployment-specific URL which may redirect and strip Authorization header
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
-      || (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000')
+      || (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : (process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000'))
 
     const url = `${baseUrl}/api/agents/email/respond`
+    const authToken = process.env.CRON_SECRET
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ email_id: emailId }),
+      redirect: 'follow',
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      return { success: false, error: `HTTP ${response.status}: ${errorData.error || errorData.details || 'Unknown'}` }
+      return { success: false, error: `HTTP ${response.status} at ${url}: ${errorData.error || errorData.message || errorData.details || 'Unknown'}` }
     }
 
     const data = await response.json()
