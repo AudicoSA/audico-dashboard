@@ -137,7 +137,7 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
 
     try {
       const message = await this.getAnthropic().messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 1024,
         messages: [
           {
@@ -149,9 +149,9 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
 
       const textContent = message.content.find(block => block.type === 'text')
       return textContent ? textContent.text : ''
-    } catch (error) {
-      console.error('Error generating post content with Claude:', error)
-      throw new Error('Failed to generate post content')
+    } catch (error: any) {
+      console.error('Error generating post content with Claude:', error?.message || error)
+      throw new Error(`Failed to generate post content: ${error?.message || 'Unknown error'}`)
     }
   }
 
@@ -410,7 +410,7 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
   async generateBulkPosts(count: number = 7): Promise<string[]> {
     const postIds: string[] = []
     const platforms: Array<'facebook' | 'instagram' | 'twitter' | 'linkedin'> = ['facebook', 'instagram', 'twitter', 'linkedin']
-    
+
     for (let i = 0; i < count; i++) {
       const platform = platforms[i % platforms.length]
       const keywordSample = getRandomKeywords(3)
@@ -476,7 +476,7 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
 
       const products = post.metadata?.products_referenced || []
       const targetKeywords = post.metadata?.target_keywords || []
-      
+
       let productDetails: ProductCatalogItem[] = []
       if (products.length > 0) {
         const productIds = products.map((p: any) => p.id)
@@ -489,17 +489,17 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
 
       const notebookTitle = `Social Post - ${post.platform} - ${new Date().toISOString().split('T')[0]}`
       const notebookPurpose = `Visual content generation for ${post.platform} social media post`
-      
+
       let notebook
       const existingNotebookId = post.metadata?.notebooklm_notebook_id
-      
+
       if (existingNotebookId) {
         const { data: existingNotebook } = await this.getSupabase()
           .from('notebooklm_notebooks')
           .select('*')
           .eq('notebook_id', existingNotebookId)
           .single()
-        
+
         if (existingNotebook) {
           notebook = {
             notebookId: existingNotebook.notebook_id,
@@ -512,7 +512,7 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
 
       if (!notebook) {
         notebook = await this.getNotebookLM().createNotebook(notebookTitle, notebookPurpose)
-        
+
         await this.getSupabase()
           .from('notebooklm_notebooks')
           .insert({
@@ -538,7 +538,7 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
       ]
 
       if (productDetails.length > 0) {
-        const productContext = productDetails.map(p => 
+        const productContext = productDetails.map(p =>
           `Product: ${p.name}\nBrand: ${p.brand || 'Unknown'}\nDescription: ${p.description || 'No description'}\nCategory: ${p.category || 'Uncategorized'}\nPrice: ${p.price ? `$${p.price}` : 'N/A'}\nFeatures: ${p.features?.join(', ') || 'None listed'}`
         ).join('\n\n---\n\n')
 
@@ -559,7 +559,7 @@ Generate ONLY the post content, without any meta-commentary or explanations.`
 
       const orientation = this.getVisualOrientation(post.platform)
       const aspectRatio = this.getAspectRatio(post.platform)
-      
+
       const visualPrompt = `Create a ${visualType === 'infographic' ? 'visually compelling infographic' : visualType === 'slide_deck' ? 'professional slide deck' : 'engaging video overview'} for ${post.platform} with ${aspectRatio} aspect ratio (${orientation} orientation). 
 
 Focus on: ${targetKeywords.join(', ')}
@@ -572,7 +572,7 @@ ${productDetails.length > 0 ? `Featured products: ${productDetails.map(p => p.na
 Make it eye-catching, on-brand for home automation/smart home technology, and optimized for social media engagement.`
 
       let artifactId: string
-      
+
       if (visualType === 'infographic') {
         artifactId = await this.getNotebookLM().generateInfographic(
           notebook.notebookId,
@@ -600,7 +600,7 @@ Make it eye-catching, on-brand for home automation/smart home technology, and op
 
       const fileExtension = visualType === 'video_overview' ? 'mp4' : 'png'
       const tempFilePath = path.join(tempDir, `${artifactId}.${fileExtension}`)
-      
+
       const downloadResult = await this.getNotebookLM().downloadArtifact(artifactId, tempFilePath)
 
       if (!downloadResult.success) {
@@ -609,7 +609,7 @@ Make it eye-catching, on-brand for home automation/smart home technology, and op
 
       const fileBuffer = fs.readFileSync(tempFilePath)
       const fileName = `${postId}/${randomUUID()}.${fileExtension}`
-      
+
       const { data: uploadData, error: uploadError } = await this.getSupabase()
         .storage
         .from('notebooklm-visuals')
@@ -723,7 +723,7 @@ ${post.content}
 
 Make it eye-catching, on-brand for home automation/smart home technology, and optimized for social media engagement.`
 
-      const finalPrompt = customPrompt 
+      const finalPrompt = customPrompt
         ? `${basePrompt}\n\nAdditional requirements:\n${customPrompt}`
         : basePrompt
 
@@ -739,7 +739,7 @@ Make it eye-catching, on-brand for home automation/smart home technology, and op
       }
 
       const tempFilePath = path.join(tempDir, `${artifactId}.png`)
-      
+
       const downloadResult = await this.getNotebookLM().downloadArtifact(artifactId, tempFilePath)
 
       if (!downloadResult.success) {
@@ -748,7 +748,7 @@ Make it eye-catching, on-brand for home automation/smart home technology, and op
 
       const fileBuffer = fs.readFileSync(tempFilePath)
       const fileName = `${postId}/${randomUUID()}.png`
-      
+
       const { error: uploadError } = await this.getSupabase()
         .storage
         .from('notebooklm-visuals')
