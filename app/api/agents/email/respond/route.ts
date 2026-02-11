@@ -230,6 +230,10 @@ export async function POST(request: NextRequest) {
           .update({
             status: 'scheduled',
             handled_by: 'Email Agent',
+            payload: {
+              ...emailLog.payload,
+              draft_response: responseBody,
+            },
             metadata: {
               ...emailLog.metadata,
               scheduled_for: scheduledSendTime.toISOString(),
@@ -290,6 +294,10 @@ export async function POST(request: NextRequest) {
           .update({
             status: 'awaiting_approval',
             handled_by: 'Email Agent',
+            payload: {
+              ...emailLog.payload,
+              draft_response: responseBody,
+            },
             metadata: {
               ...emailLog.metadata,
               draft_id: draftResponse.data.id
@@ -321,6 +329,10 @@ export async function POST(request: NextRequest) {
         .update({
           status: 'draft_created',
           handled_by: 'Email Agent',
+          payload: {
+            ...emailLog.payload,
+            draft_response: responseBody,
+          },
           metadata: {
             ...emailLog.metadata,
             draft_id: draftResponse.data.id

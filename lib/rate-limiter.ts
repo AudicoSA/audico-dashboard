@@ -136,12 +136,12 @@ export const AGENT_RATE_LIMITS: Record<string, RateLimitConfig> = {
   },
   email_respond: {
     agentName: 'email_respond',
-    maxExecutions: 50,
+    maxExecutions: 200,
     windowSeconds: 86400,
   },
   email_send: {
     agentName: 'email_send',
-    maxExecutions: 50,
+    maxExecutions: 200,
     windowSeconds: 86400,
   },
   social_publish: {
