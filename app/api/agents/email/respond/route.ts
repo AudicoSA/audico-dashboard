@@ -198,8 +198,8 @@ export async function POST(request: NextRequest) {
       const scheduledSendTime = new Date(Date.now() + 3600000) // 1 hour from now
 
       const { error: taskError } = await supabase.from('squad_tasks').insert({
-        title: `Send email to ${emailLog.from_email}`,
-        description: `Auto-send email response (${emailCategory}):\n\nSubject: ${emailLog.subject}\n\n${responseBody.substring(0, 300)}...`,
+        title: `[Jarvis] Auto-send reply to ${emailLog.from_email}`,
+        description: `Jarvis created this auto-send task (${emailCategory}):\n\nSubject: ${emailLog.subject}\nFrom: ${emailLog.from_email}\n\nDraft response:\n${responseBody.substring(0, 500)}`,
         status: 'new',
         assigned_agent: 'Email Agent',
         priority: 'low',
@@ -208,7 +208,8 @@ export async function POST(request: NextRequest) {
           email_id: emailLog.id,
           draft_id: draftResponse.data.id,
           email_category: emailCategory,
-          scheduled_for: scheduledSendTime.toISOString()
+          scheduled_for: scheduledSendTime.toISOString(),
+          created_by: 'Jarvis'
         },
         deliverable_url: `/emails/${emailLog.id}/draft`
       })
@@ -262,8 +263,8 @@ export async function POST(request: NextRequest) {
     } else if (approvalCategories.includes(emailCategory)) {
       // Create approval task for Kenny
       const { error: taskError } = await supabase.from('squad_tasks').insert({
-        title: `Approve email response to ${emailLog.from_email}`,
-        description: `Category: ${emailCategory}\nSubject: ${emailLog.subject}\n\nPreview:\n${responseBody.substring(0, 300)}...`,
+        title: `[Jarvis] Approve reply to ${emailLog.from_email}`,
+        description: `Jarvis needs your approval for this ${emailCategory} response:\n\nSubject: ${emailLog.subject}\nFrom: ${emailLog.from_email}\n\nDraft response:\n${responseBody.substring(0, 500)}`,
         status: 'new',
         assigned_agent: 'Email Agent',
         priority: emailCategory === 'complaint' ? 'urgent' : 'high',
@@ -272,7 +273,8 @@ export async function POST(request: NextRequest) {
         metadata: {
           email_id: emailLog.id,
           draft_id: draftResponse.data.id,
-          email_category: emailCategory
+          email_category: emailCategory,
+          created_by: 'Jarvis'
         },
         deliverable_url: `/emails/${emailLog.id}/draft`
       })
