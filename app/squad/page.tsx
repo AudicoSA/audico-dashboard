@@ -249,7 +249,7 @@ export default function MissionControl() {
   const inProgressTasks = filteredTasks.filter(t => t.status === 'in_progress')
   const completedTasks = filteredTasks.filter(t => t.status === 'completed')
 
-  const kennyMentions = tasks.filter(t => t.mentions_kenny && t.status !== 'completed')
+  const kennyMentions = tasks.filter(t => t.mentions_kenny && !['completed', 'rejected', 'failed'].includes(t.status))
 
   const moveTask = async (taskId: string, newStatus: TaskStatus) => {
     setTasks(prev => prev.map(t => 
