@@ -33,7 +33,7 @@ export default function RootLayout({
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 w-full px-4 space-y-2">
+            <nav className="flex-1 w-full px-4 space-y-2 overflow-y-auto">
               <NavItem href="/" icon={<LayoutGrid size={22} />} label="Dashboard" />
               <NavItem href="/products" icon={<ShoppingBag size={22} />} label="Products" />
               <NavItem href="/orders" icon={<Package size={22} />} label="Orders" />
