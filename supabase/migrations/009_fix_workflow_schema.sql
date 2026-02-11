@@ -18,6 +18,9 @@ ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'medium';
 -- ============================================
 
 ALTER TABLE email_logs DROP CONSTRAINT IF EXISTS email_logs_category_check;
+UPDATE email_logs SET category = 'other'
+WHERE category IS NULL
+   OR category NOT IN ('unclassified', 'order', 'support', 'inquiry', 'complaint', 'spam', 'other');
 ALTER TABLE email_logs ADD CONSTRAINT email_logs_category_check
   CHECK (category IN ('unclassified', 'order', 'support', 'inquiry', 'complaint', 'spam', 'other'));
 
