@@ -21,29 +21,80 @@ async function logToSquadMessages(fromAgent: string, message: string, data: any 
     })
 }
 
-type EmailCategory = 'order' | 'support' | 'inquiry' | 'complaint' | 'spam' | 'other'
+type EmailCategory = 'order' | 'support' | 'inquiry' | 'complaint' | 'spam' | 'internal' | 'other'
 type EmailPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+// Internal/known domains - never auto-respond to these
+const INTERNAL_DOMAINS = [
+  'audico.co.za',
+  'audicoonline.co.za',
+]
 
 function classifyEmail(from: string, subject: string, body: string): {
   category: EmailCategory
   priority: EmailPriority
 } {
+  const lowerFrom = from.toLowerCase()
   const lowerSubject = subject.toLowerCase()
   const lowerBody = body.toLowerCase()
   const combined = lowerSubject + ' ' + lowerBody
 
+  // 1. Internal emails - staff, own domains (never auto-respond)
+  if (INTERNAL_DOMAINS.some(domain => lowerFrom.includes(domain))) {
+    return { category: 'internal', priority: 'low' }
+  }
+
+  // 2. Spam / marketing noise
+  if (
+    combined.includes('unsubscribe') ||
+    combined.includes('spam') ||
+    combined.includes('promotional') ||
+    combined.includes('opt out') ||
+    combined.includes('marketing email')
+  ) {
+    return { category: 'spam', priority: 'low' }
+  }
+
   let category: EmailCategory = 'other'
   let priority: EmailPriority = 'medium'
 
+  // 3. Complaints / disgruntled customers (URGENT - always draft response)
   if (
-    combined.includes('order') ||
-    combined.includes('purchase') ||
-    combined.includes('invoice') ||
-    combined.includes('receipt')
+    combined.includes('complaint') ||
+    combined.includes('unhappy') ||
+    combined.includes('disappointed') ||
+    combined.includes('disgusted') ||
+    combined.includes('terrible') ||
+    combined.includes('worst') ||
+    combined.includes('refund') ||
+    combined.includes('broken') ||
+    combined.includes('damaged') ||
+    combined.includes('not working') ||
+    combined.includes('never received') ||
+    combined.includes('wrong item') ||
+    combined.includes('faulty')
   ) {
-    category = 'order'
-    priority = 'high'
-  } else if (
+    category = 'complaint'
+    priority = 'urgent'
+  }
+  // 4. Tech support / product help (AI can assist well)
+  else if (
+    combined.includes('how do i') ||
+    combined.includes('how to') ||
+    combined.includes('setup') ||
+    combined.includes('set up') ||
+    combined.includes('install') ||
+    combined.includes('connect') ||
+    combined.includes('pair') ||
+    combined.includes('bluetooth') ||
+    combined.includes('wifi') ||
+    combined.includes('firmware') ||
+    combined.includes('not connecting') ||
+    combined.includes('troubleshoot') ||
+    combined.includes('manual') ||
+    combined.includes('specs') ||
+    combined.includes('specification') ||
+    combined.includes('compatible') ||
     combined.includes('help') ||
     combined.includes('support') ||
     combined.includes('issue') ||
@@ -51,31 +102,44 @@ function classifyEmail(from: string, subject: string, body: string): {
   ) {
     category = 'support'
     priority = 'high'
-  } else if (
+  }
+  // 5. Product inquiries / pricing (AI can auto-assist)
+  else if (
+    combined.includes('price') ||
+    combined.includes('cost') ||
+    combined.includes('stock') ||
+    combined.includes('available') ||
+    combined.includes('availability') ||
+    combined.includes('do you have') ||
+    combined.includes('looking for') ||
+    combined.includes('interested in') ||
+    combined.includes('catalogue') ||
+    combined.includes('catalog') ||
+    combined.includes('quote') ||
     combined.includes('question') ||
     combined.includes('inquiry') ||
-    combined.includes('ask') ||
     combined.includes('wondering')
   ) {
     category = 'inquiry'
     priority = 'medium'
-  } else if (
-    combined.includes('complaint') ||
-    combined.includes('unhappy') ||
-    combined.includes('disappointed') ||
-    combined.includes('refund')
+  }
+  // 6. Orders / invoices / supplier stuff - just log, your team handles these
+  else if (
+    combined.includes('order') ||
+    combined.includes('purchase') ||
+    combined.includes('invoice') ||
+    combined.includes('receipt') ||
+    combined.includes('statement') ||
+    combined.includes('payment received') ||
+    combined.includes('proof of payment') ||
+    combined.includes('remittance') ||
+    combined.includes('credit note')
   ) {
-    category = 'complaint'
-    priority = 'urgent'
-  } else if (
-    combined.includes('unsubscribe') ||
-    combined.includes('spam') ||
-    combined.includes('promotional')
-  ) {
-    category = 'spam'
+    category = 'order'
     priority = 'low'
   }
 
+  // Urgency override
   if (combined.includes('urgent') || combined.includes('asap') || combined.includes('immediately')) {
     priority = 'urgent'
   }

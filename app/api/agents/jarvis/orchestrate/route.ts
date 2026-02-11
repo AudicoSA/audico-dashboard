@@ -154,8 +154,9 @@ async function handleOrchestrate() {
       for (const email of classifiedEmails) {
         emailResults.processed++
 
-        // Skip spam - just mark as handled
-        if (email.category === 'spam') {
+        // Skip categories that don't need AI responses
+        const skipCategories = ['spam', 'internal', 'order', 'other']
+        if (skipCategories.includes(email.category)) {
           await supabase
             .from('email_logs')
             .update({
@@ -169,14 +170,14 @@ async function handleOrchestrate() {
 
           await logToSquadMessages(
             'Jarvis',
-            `Skipped spam email: "${email.subject}" from ${email.from_email}`,
+            `Skipped ${email.category} email: "${email.subject}" from ${email.from_email}`,
             null,
-            { email_id: email.id, category: 'spam' }
+            { email_id: email.id, category: email.category }
           )
           continue
         }
 
-        // For all actionable categories, trigger Email Agent to create draft + approval task
+        // Only respond to: complaint, support, inquiry (AI adds value here)
         const result = await triggerEmailResponse(email.id)
 
         if (result.success) {
