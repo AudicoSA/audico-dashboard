@@ -17,6 +17,18 @@
       "schedule": "*/20 * * * *"
     },
     {
+      "path": "/api/agents/social/generate",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/agents/seo/audit",
+      "schedule": "0 4 * * 1"
+    },
+    {
+      "path": "/api/agents/marketing/check",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/cron/stock/check",
       "schedule": "0 */6 * * *"
     },
