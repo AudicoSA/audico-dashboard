@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a task-like object for the handler
+    const now = new Date().toISOString()
     const task = {
       id: crypto.randomUUID(),
       title: `SEO: ${action}`,
@@ -64,7 +65,11 @@ export async function POST(request: NextRequest) {
       status: 'in_progress' as const,
       assigned_agent: 'seo-agent',
       priority: 'medium' as const,
-      created_at: new Date().toISOString(),
+      mentions_kenny: false,
+      requires_approval: false,
+      execution_attempts: 0,
+      created_at: now,
+      updated_at: now,
       metadata: {
         action,
         productIds,
