@@ -58,29 +58,38 @@ export default function PendingChangesPage() {
 
     const approveChanges = async (ids: string[]) => {
         setProcessing(true)
+        const BATCH_SIZE = 50
 
         try {
-            // Update status in database
-            await supabase
-                .from('price_change_queue')
-                .update({
-                    status: 'approved',
-                    reviewed_by: 'dashboard_user', // TODO: Get actual user
-                    reviewed_at: new Date().toISOString()
-                })
-                .in('id', ids)
-
-            // Apply changes to OpenCart via API
-            const response = await fetch('/api/stock/approve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ change_ids: ids })
-            })
-
-            if (response.ok) {
-                await fetchPendingChanges()
-                setSelectedIds(new Set())
+            // Update status in database (batched to avoid URL length limits)
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, i + BATCH_SIZE)
+                await supabase
+                    .from('price_change_queue')
+                    .update({
+                        status: 'approved',
+                        reviewed_by: 'dashboard_user', // TODO: Get actual user
+                        reviewed_at: new Date().toISOString()
+                    })
+                    .in('id', batch)
             }
+
+            // Apply changes to OpenCart via API (also batched)
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, i + BATCH_SIZE)
+                const response = await fetch('/api/stock/approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ change_ids: batch })
+                })
+
+                if (!response.ok) {
+                    throw new Error('Failed to apply changes to OpenCart')
+                }
+            }
+
+            await fetchPendingChanges()
+            setSelectedIds(new Set())
         } catch (error) {
             console.error('Failed to approve changes:', error)
         }
@@ -90,15 +99,20 @@ export default function PendingChangesPage() {
 
     const rejectChanges = async (ids: string[]) => {
         setProcessing(true)
+        const BATCH_SIZE = 50
 
-        await supabase
-            .from('price_change_queue')
-            .update({
-                status: 'rejected',
-                reviewed_by: 'dashboard_user',
-                reviewed_at: new Date().toISOString()
-            })
-            .in('id', ids)
+        // Batch updates to avoid URL length limits
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+            const batch = ids.slice(i, i + BATCH_SIZE)
+            await supabase
+                .from('price_change_queue')
+                .update({
+                    status: 'rejected',
+                    reviewed_by: 'dashboard_user',
+                    reviewed_at: new Date().toISOString()
+                })
+                .in('id', batch)
+        }
 
         await fetchPendingChanges()
         setSelectedIds(new Set())

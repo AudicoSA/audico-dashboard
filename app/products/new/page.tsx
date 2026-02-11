@@ -68,12 +68,19 @@ export default function NewProductsPage() {
         if (selected.size === 0) return
         setProcessing(true)
         try {
-            const { error } = await supabase
-                .from('new_products_queue')
-                .update({ status: 'approved_pending' })
-                .in('id', Array.from(selected))
+            // Batch updates to avoid URL length limits
+            const ids = Array.from(selected)
+            const BATCH_SIZE = 50
 
-            if (error) throw error
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, i + BATCH_SIZE)
+                const { error } = await supabase
+                    .from('new_products_queue')
+                    .update({ status: 'approved_pending' })
+                    .in('id', batch)
+
+                if (error) throw error
+            }
 
             // Clear selection and refresh
             setSelected(new Set())
@@ -93,12 +100,19 @@ export default function NewProductsPage() {
 
         setProcessing(true)
         try {
-            const { error } = await supabase
-                .from('new_products_queue')
-                .delete()
-                .in('id', Array.from(selected))
+            // Batch deletes to avoid URL length limits
+            const ids = Array.from(selected)
+            const BATCH_SIZE = 50
 
-            if (error) throw error
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, i + BATCH_SIZE)
+                const { error } = await supabase
+                    .from('new_products_queue')
+                    .delete()
+                    .in('id', batch)
+
+                if (error) throw error
+            }
 
             setSelected(new Set())
             await fetchProducts()
