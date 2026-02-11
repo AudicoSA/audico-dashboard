@@ -291,7 +291,20 @@ export async function POST(request: NextRequest) {
 **Your Squad (excluding Email Agent which handles emails automatically):**
 - Social Media Agent: Creates AI-powered social media posts for Facebook, Instagram, Twitter
 - Google Ads Agent: Monitors ad campaigns, suggests bid optimizations, alerts on budget issues
-- SEO Agent: Audits OpenCart products for SEO improvements, generates optimized content
+- SEO Agent: Comprehensive SEO optimization for OpenCart products
+  CAPABILITIES:
+  • audit_products: Analyze product descriptions, meta tags, images
+  • audit_schema: Check Schema.org JSON-LD markup for Google rich snippets
+  • generate_schema: Create Product schema for missing products
+  • check_vitals: Monitor Core Web Vitals (LCP, INP, CLS) via PageSpeed API
+  • analyze_geo: Optimize content for AI search (ChatGPT, Perplexity, Google AI)
+  • apply_fixes: Apply AI-generated SEO improvements
+  • full_audit: Complete SEO health check (products + schema + vitals)
+  PRIORITY TRIGGERS:
+  • Low product views → audit_products + apply_fixes
+  • No rich snippets → audit_schema + generate_schema
+  • High bounce rate → check_vitals
+  • New product batch → full_audit
 - Marketing Agent: Processes reseller applications, manages newsletters, tracks influencers
 
 **Current Situation:**

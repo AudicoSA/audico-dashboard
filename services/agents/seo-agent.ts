@@ -1,5 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { createConnection, Connection, RowDataPacket } from 'mysql2/promise'
+import type {
+  ProductSchemaLD,
+  BreadcrumbListLD,
+  DetectedSchema,
+  SchemaAuditResult
+} from './seo-types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -811,5 +817,477 @@ export async function runFullSEOAudit(
     audits,
     summary,
     stored_audit_ids,
+  }
+}
+
+// ============================================
+// Schema.org Markup Functions
+// ============================================
+
+/**
+ * Get manufacturer name from OpenCart by ID
+ */
+async function getManufacturerName(manufacturerId: number): Promise<string | undefined> {
+  let connection: Connection | null = null
+  try {
+    connection = await connectToOpenCart()
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      'SELECT name FROM oc_manufacturer WHERE manufacturer_id = ?',
+      [manufacturerId]
+    )
+    return rows.length > 0 ? rows[0].name : undefined
+  } catch {
+    return undefined
+  } finally {
+    if (connection) await connection.end()
+  }
+}
+
+/**
+ * Get product reviews summary from OpenCart
+ */
+async function getProductReviews(productId: number): Promise<{ rating: number; count: number } | undefined> {
+  let connection: Connection | null = null
+  try {
+    connection = await connectToOpenCart()
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      `SELECT AVG(rating) as avg_rating, COUNT(*) as count
+       FROM oc_review
+       WHERE product_id = ? AND status = 1`,
+      [productId]
+    )
+    if (rows.length > 0 && rows[0].count > 0) {
+      return {
+        rating: Math.round(rows[0].avg_rating * 10) / 10,
+        count: rows[0].count
+      }
+    }
+    return undefined
+  } catch {
+    return undefined
+  } finally {
+    if (connection) await connection.end()
+  }
+}
+
+/**
+ * Get category path for a product (for breadcrumbs)
+ */
+async function getCategoryPath(productId: number): Promise<Array<{ name: string; url: string }>> {
+  let connection: Connection | null = null
+  const baseUrl = process.env.OPENCART_BASE_URL || 'https://audicoonline.co.za'
+
+  try {
+    connection = await connectToOpenCart()
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      `SELECT cd.name, c.category_id, cp.path_id
+       FROM oc_product_to_category ptc
+       JOIN oc_category_path cp ON ptc.category_id = cp.category_id
+       JOIN oc_category c ON cp.path_id = c.category_id
+       JOIN oc_category_description cd ON c.category_id = cd.category_id AND cd.language_id = 1
+       WHERE ptc.product_id = ?
+       ORDER BY cp.level ASC`,
+      [productId]
+    )
+
+    return rows.map(row => ({
+      name: row.name,
+      url: `${baseUrl}/index.php?route=product/category&path=${row.category_id}`
+    }))
+  } catch {
+    return []
+  } finally {
+    if (connection) await connection.end()
+  }
+}
+
+/**
+ * Detect existing Schema.org markup on a page
+ */
+export async function detectSchemaMarkup(url: string): Promise<DetectedSchema[]> {
+  const detectedSchemas: DetectedSchema[] = []
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Audico SEO Agent/1.0'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const html = await response.text()
+
+    // 1. Detect JSON-LD schemas
+    const jsonLdRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    let match
+
+    while ((match = jsonLdRegex.exec(html)) !== null) {
+      try {
+        const schemaData = JSON.parse(match[1].trim())
+        const schemas = Array.isArray(schemaData) ? schemaData : [schemaData]
+
+        for (const schema of schemas) {
+          const type = schema['@type'] || 'Unknown'
+          const errors = validateSchema(schema)
+
+          detectedSchemas.push({
+            type,
+            format: 'JSON-LD',
+            valid: errors.length === 0,
+            errors: errors.length > 0 ? errors : undefined,
+            data: schema
+          })
+        }
+      } catch (parseError) {
+        detectedSchemas.push({
+          type: 'Invalid',
+          format: 'JSON-LD',
+          valid: false,
+          errors: ['Failed to parse JSON-LD: ' + (parseError as Error).message]
+        })
+      }
+    }
+
+    // 2. Detect Microdata
+    const hasProductMicrodata = html.includes('itemtype="https://schema.org/Product"') ||
+                                html.includes('itemtype="http://schema.org/Product"')
+    const hasBreadcrumbMicrodata = html.includes('itemtype="https://schema.org/BreadcrumbList"') ||
+                                   html.includes('itemtype="http://schema.org/BreadcrumbList"')
+
+    if (hasProductMicrodata) {
+      detectedSchemas.push({
+        type: 'Product',
+        format: 'Microdata',
+        valid: true,
+        errors: undefined
+      })
+    }
+
+    if (hasBreadcrumbMicrodata) {
+      detectedSchemas.push({
+        type: 'BreadcrumbList',
+        format: 'Microdata',
+        valid: true,
+        errors: undefined
+      })
+    }
+
+    return detectedSchemas
+  } catch (error: any) {
+    await logToSquadMessages(
+      'seo_agent',
+      `Failed to detect schema markup for ${url}: ${error.message}`,
+      { action: 'detect_schema_error', url, error: error.message }
+    )
+    return []
+  }
+}
+
+/**
+ * Validate a schema object for required fields
+ */
+function validateSchema(schema: Record<string, any>): string[] {
+  const errors: string[] = []
+  const type = schema['@type']
+
+  if (!type) {
+    errors.push('Missing @type property')
+    return errors
+  }
+
+  if (type === 'Product') {
+    if (!schema.name) errors.push('Product: missing name')
+    if (!schema.description) errors.push('Product: missing description')
+    if (!schema.offers) errors.push('Product: missing offers')
+    if (schema.offers && !schema.offers.price) errors.push('Product: offers missing price')
+    if (schema.offers && !schema.offers.availability) errors.push('Product: offers missing availability')
+  }
+
+  if (type === 'BreadcrumbList') {
+    if (!schema.itemListElement || schema.itemListElement.length === 0) {
+      errors.push('BreadcrumbList: missing itemListElement')
+    }
+  }
+
+  return errors
+}
+
+/**
+ * Generate Product JSON-LD schema from OpenCart data
+ */
+export async function generateProductSchema(
+  product: OpenCartProduct,
+  description: OpenCartProductDescription,
+  images: OpenCartProductImage[],
+  reviews?: { rating: number; count: number }
+): Promise<ProductSchemaLD> {
+  const baseUrl = process.env.OPENCART_BASE_URL || 'https://audicoonline.co.za'
+
+  let brandName: string | undefined
+  if (product.manufacturer_id) {
+    brandName = await getManufacturerName(product.manufacturer_id)
+  }
+
+  // Clean description HTML
+  const cleanDescription = description.description
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 500)
+
+  // Build image URLs
+  const imageUrls: string[] = []
+  if (product.image) {
+    imageUrls.push(`${baseUrl}/image/${product.image}`)
+  }
+  for (const img of images.slice(0, 5)) {
+    imageUrls.push(`${baseUrl}/image/${img.image}`)
+  }
+
+  const schema: ProductSchemaLD = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: description.name,
+    description: cleanDescription || `High-quality ${description.name} available at Audico Online`,
+    image: imageUrls,
+    sku: product.sku || product.model,
+    offers: {
+      "@type": "Offer",
+      price: product.price,
+      priceCurrency: "ZAR",
+      availability: product.quantity > 0
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+      url: `${baseUrl}/index.php?route=product/product&product_id=${product.product_id}`
+    }
+  }
+
+  // Add optional fields
+  if (product.mpn) {
+    schema.mpn = product.mpn
+  }
+
+  if (brandName) {
+    schema.brand = {
+      "@type": "Brand",
+      name: brandName
+    }
+  }
+
+  if (reviews && reviews.count > 0) {
+    schema.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: reviews.rating,
+      reviewCount: reviews.count
+    }
+  }
+
+  return schema
+}
+
+/**
+ * Generate Breadcrumb JSON-LD schema from category path
+ */
+export function generateBreadcrumbSchema(
+  categoryPath: Array<{ name: string; url: string }>
+): BreadcrumbListLD {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: categoryPath.map((cat, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: cat.name,
+      item: cat.url
+    }))
+  }
+}
+
+/**
+ * Audit schema compliance for products
+ */
+export async function auditSchemaCompliance(
+  productIds?: number[],
+  limit: number = 50
+): Promise<{
+  audits: SchemaAuditResult[]
+  summary: {
+    total: number
+    with_schema: number
+    without_schema: number
+    with_errors: number
+  }
+}> {
+  let connection: Connection | null = null
+  const audits: SchemaAuditResult[] = []
+  const baseUrl = process.env.OPENCART_BASE_URL || 'https://audicoonline.co.za'
+
+  try {
+    await logToSquadMessages(
+      'seo_agent',
+      'Starting schema compliance audit',
+      { action: 'schema_audit_start', product_ids: productIds, limit }
+    )
+
+    connection = await connectToOpenCart()
+
+    // Get products to audit
+    let productsQuery = 'SELECT * FROM oc_product WHERE status = 1'
+    const queryParams: any[] = []
+
+    if (productIds && productIds.length > 0) {
+      productsQuery += ` AND product_id IN (${productIds.map(() => '?').join(',')})`
+      queryParams.push(...productIds)
+    }
+
+    productsQuery += ' LIMIT ?'
+    queryParams.push(limit)
+
+    const [products] = await connection.execute<OpenCartProduct[]>(productsQuery, queryParams)
+
+    for (const product of products) {
+      const productUrl = `${baseUrl}/index.php?route=product/product&product_id=${product.product_id}`
+
+      // Get product description and images
+      const [descriptions] = await connection.execute<OpenCartProductDescription[]>(
+        'SELECT * FROM oc_product_description WHERE product_id = ? AND language_id = 1',
+        [product.product_id]
+      )
+
+      const [images] = await connection.execute<OpenCartProductImage[]>(
+        'SELECT * FROM oc_product_image WHERE product_id = ? ORDER BY sort_order LIMIT 5',
+        [product.product_id]
+      )
+
+      const description = descriptions[0] || null
+
+      // Detect existing schemas on the page
+      const detectedSchemas = await detectSchemaMarkup(productUrl)
+
+      const hasProductSchema = detectedSchemas.some(s => s.type === 'Product')
+      const hasBreadcrumbSchema = detectedSchemas.some(s => s.type === 'BreadcrumbList')
+      const hasOrganizationSchema = detectedSchemas.some(s => s.type === 'Organization')
+      const hasReviewSchema = detectedSchemas.some(s => s.type === 'AggregateRating' || s.type === 'Review')
+
+      const missingFields: string[] = []
+      const validationErrors: string[] = []
+      const recommendations: string[] = []
+
+      // Collect validation errors
+      for (const schema of detectedSchemas) {
+        if (schema.errors) {
+          validationErrors.push(...schema.errors)
+        }
+      }
+
+      // Generate recommendations
+      if (!hasProductSchema) {
+        recommendations.push('Add Product JSON-LD schema for rich snippets in Google search results')
+        missingFields.push('Product schema')
+      }
+
+      if (!hasBreadcrumbSchema) {
+        recommendations.push('Add BreadcrumbList schema for improved navigation in search results')
+        missingFields.push('Breadcrumb schema')
+      }
+
+      // Generate schema if missing
+      let generatedSchema: ProductSchemaLD | undefined
+      if (!hasProductSchema && description) {
+        const reviews = await getProductReviews(product.product_id)
+        generatedSchema = await generateProductSchema(product, description, images, reviews)
+      }
+
+      audits.push({
+        product_id: product.product_id,
+        url: productUrl,
+        has_product_schema: hasProductSchema,
+        has_breadcrumb_schema: hasBreadcrumbSchema,
+        has_organization_schema: hasOrganizationSchema,
+        has_review_schema: hasReviewSchema,
+        detected_schemas: detectedSchemas,
+        missing_required_fields: missingFields,
+        validation_errors: validationErrors,
+        generated_schema: generatedSchema,
+        recommendations,
+        audited_at: new Date()
+      })
+    }
+
+    const summary = {
+      total: audits.length,
+      with_schema: audits.filter(a => a.has_product_schema).length,
+      without_schema: audits.filter(a => !a.has_product_schema).length,
+      with_errors: audits.filter(a => a.validation_errors.length > 0).length
+    }
+
+    await logToSquadMessages(
+      'seo_agent',
+      `Schema compliance audit completed: ${summary.total} products audited`,
+      { action: 'schema_audit_complete', summary }
+    )
+
+    return { audits, summary }
+  } catch (error: any) {
+    await logToSquadMessages(
+      'seo_agent',
+      `Schema compliance audit failed: ${error.message}`,
+      { action: 'schema_audit_error', error: error.message }
+    )
+    throw error
+  } finally {
+    if (connection) await connection.end()
+  }
+}
+
+/**
+ * Store schema audit results to Supabase
+ */
+export async function storeSchemaAuditResults(audits: SchemaAuditResult[]): Promise<string[]> {
+  const auditIds: string[] = []
+
+  try {
+    for (const audit of audits) {
+      const { data, error } = await supabase
+        .from('seo_schema_audits')
+        .insert({
+          url: audit.url,
+          product_id: audit.product_id,
+          has_product_schema: audit.has_product_schema,
+          has_breadcrumb_schema: audit.has_breadcrumb_schema,
+          has_organization_schema: audit.has_organization_schema,
+          has_review_schema: audit.has_review_schema,
+          detected_schemas: audit.detected_schemas,
+          missing_required_fields: audit.missing_required_fields,
+          validation_errors: audit.validation_errors,
+          generated_schema: audit.generated_schema
+        })
+        .select('id')
+        .single()
+
+      if (error) {
+        console.error(`Failed to store schema audit for product ${audit.product_id}:`, error.message)
+      } else if (data) {
+        auditIds.push(data.id)
+      }
+    }
+
+    await logToSquadMessages(
+      'seo_agent',
+      `Stored ${auditIds.length} schema audit results`,
+      { action: 'store_schema_audits_complete', audit_ids: auditIds }
+    )
+
+    return auditIds
+  } catch (error: any) {
+    await logToSquadMessages(
+      'seo_agent',
+      `Failed to store schema audit results: ${error.message}`,
+      { action: 'store_schema_audits_error', error: error.message }
+    )
+    throw error
   }
 }

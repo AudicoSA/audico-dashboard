@@ -16,7 +16,13 @@ export const AGENT_SCHEDULES = {
   CONFLICT_CHECK: '*/2 * * * *',
   TOKEN_MONITOR: '*/5 * * * *',
   SOCIAL_VISUALS_DAILY: '0 9 * * *',
-  NEWSLETTER_ASSETS_WEEKLY: '0 10 * * 1'
+  NEWSLETTER_ASSETS_WEEKLY: '0 10 * * 1',
+
+  // SEO Agent schedules (off-peak hours SAST)
+  SEO_VITALS_DAILY: '0 3 * * *',      // 3 AM daily - check top 20 product pages
+  SEO_SCHEMA_WEEKLY: '0 4 * * 0',     // 4 AM Sunday - audit schema compliance
+  SEO_FULL_WEEKLY: '0 5 * * 1',       // 5 AM Monday - comprehensive audit
+  SEO_GEO_MONTHLY: '0 6 1 * *',       // 6 AM 1st of month - AI search optimization
 }
 
 export const AGENT_TOKEN_ESTIMATES = {
@@ -28,7 +34,17 @@ export const AGENT_TOKEN_ESTIMATES = {
   content_generation: 1500,
   visual_content_generation: 2000,
   newsletter_assets: 3000,
-  reseller_kit: 2500
+  reseller_kit: 2500,
+
+  // SEO Agent enhanced capabilities
+  seo_schema_audit: 200,        // Mostly HTML parsing, minimal LLM
+  seo_schema_generate: 500,     // Template-based with LLM refinement
+  seo_vitals_check: 50,         // PageSpeed API only, no LLM
+  seo_vitals_batch: 100,        // Multiple pages
+  seo_geo_analysis: 1200,       // Full content analysis with LLM
+  seo_eeat_analysis: 1000,      // Trust signal analysis
+  seo_content_optimize: 1500,   // AI content optimization
+  seo_full_audit: 2000,         // Combined audit
 }
 
 export const AGENT_PRIORITIES = {
