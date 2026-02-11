@@ -30,7 +30,63 @@ const INTERNAL_DOMAINS = [
   'audicoonline.co.za',
 ]
 
-function classifyEmail(from: string, subject: string, body: string): {
+// Known business partners / vendors / service providers - never auto-respond
+// These are companies we work with internally (call centers, suppliers, etc.)
+const KNOWN_PARTNERS = [
+  'thetha',        // Thetha - our call center
+  'noreply',       // Automated system emails
+  'no-reply',
+  'mailer-daemon',
+  'postmaster',
+]
+
+/**
+ * Load senders that Kenny has rejected 2+ times from squad_tasks.
+ * This teaches the system to stop emailing people Kenny keeps rejecting.
+ */
+async function loadBlockedSenders(): Promise<string[]> {
+  try {
+    // Get rejected tasks that have email metadata
+    const { data: rejectedTasks } = await supabase
+      .from('squad_tasks')
+      .select('metadata')
+      .eq('status', 'rejected')
+      .not('metadata->email_id', 'is', null)
+
+    if (!rejectedTasks || rejectedTasks.length === 0) return []
+
+    // Get the email IDs from rejected tasks
+    const emailIds = rejectedTasks
+      .map(t => t.metadata?.email_id)
+      .filter(Boolean)
+
+    if (emailIds.length === 0) return []
+
+    // Fetch the senders for those emails
+    const { data: emails } = await supabase
+      .from('email_logs')
+      .select('from_email')
+      .in('id', emailIds)
+
+    if (!emails) return []
+
+    // Count rejections per sender - block senders rejected 2+ times
+    const senderCounts: Record<string, number> = {}
+    for (const email of emails) {
+      const sender = email.from_email?.toLowerCase() || ''
+      senderCounts[sender] = (senderCounts[sender] || 0) + 1
+    }
+
+    return Object.entries(senderCounts)
+      .filter(([, count]) => count >= 2)
+      .map(([sender]) => sender)
+  } catch (error) {
+    console.error('Failed to load blocked senders:', error)
+    return []
+  }
+}
+
+function classifyEmail(from: string, subject: string, body: string, blockedSenders: string[] = []): {
   category: EmailCategory
   priority: EmailPriority
 } {
@@ -41,6 +97,16 @@ function classifyEmail(from: string, subject: string, body: string): {
 
   // 1. Internal emails - staff, own domains (never auto-respond)
   if (INTERNAL_DOMAINS.some(domain => lowerFrom.includes(domain))) {
+    return { category: 'internal', priority: 'low' }
+  }
+
+  // 1b. Known business partners (call centers, vendors) - never auto-respond
+  if (KNOWN_PARTNERS.some(partner => lowerFrom.includes(partner))) {
+    return { category: 'internal', priority: 'low' }
+  }
+
+  // 1c. Learned blocklist - senders Kenny has rejected 2+ times
+  if (blockedSenders.some(blocked => lowerFrom.includes(blocked))) {
     return { category: 'internal', priority: 'low' }
   }
 
@@ -198,10 +264,13 @@ async function handleClassify() {
       })
     }
 
+    // Load dynamic blocklist from rejected tasks (learns from Kenny's rejections)
+    const blockedSenders = await loadBlockedSenders()
+
     await logToSquadMessages(
       'Email Agent',
-      `📧 Classifying ${unclassifiedEmails.length} emails`,
-      { action: 'classify_start', count: unclassifiedEmails.length }
+      `📧 Classifying ${unclassifiedEmails.length} emails (${blockedSenders.length} senders on learned blocklist)`,
+      { action: 'classify_start', count: unclassifiedEmails.length, blocked_senders: blockedSenders.length }
     )
 
     const classified = []
@@ -212,7 +281,8 @@ async function handleClassify() {
         const { category, priority } = classifyEmail(
           emailLog.from_email,
           emailLog.subject,
-          emailLog.payload?.body || ''
+          emailLog.payload?.body || '',
+          blockedSenders
         )
 
         const { data: updated, error: updateError } = await supabase
