@@ -433,3 +433,177 @@ export type QuoteRequest = {
   created_at: string
   updated_at: string
 }
+
+export type QuoteApprovalFeedback = {
+  id: string
+  quote_request_id: string
+  quote_number: string
+  action: 'approved' | 'rejected' | 'edited'
+  reason: string | null
+  original_total: number | null
+  edited_total: number | null
+  edits: any[]
+  approval_time_seconds: number | null
+  patterns: any
+  metadata: any
+  created_at: string
+}
+
+export type QuoteEdit = {
+  id: string
+  quote_request_id: string
+  quote_number: string
+  edit_type: 'price_adjustment' | 'product_added' | 'product_removed' | 'quantity_changed' | 'markup_changed' | 'other'
+  item_name: string | null
+  old_value: any
+  new_value: any
+  reason: string | null
+  edited_by: string
+  created_at: string
+}
+
+export type SquadTask = {
+  id: string
+  title: string
+  description: string
+  status: 'new' | 'in_progress' | 'completed'
+  assigned_agent: string
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  mentions_kenny: boolean
+  deliverable_url: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type QuoteEmailTemplate = {
+  id: string
+  template_name: string
+  variant_name: string
+  tone: 'formal' | 'casual' | 'friendly' | 'professional'
+  urgency_level: 'low' | 'medium' | 'high' | 'urgent' | null
+  customer_segment: 'first_time' | 'repeat' | 'high_value' | 'dormant' | 'any'
+  subject_template: string
+  body_template: string
+  signature_template: string
+  follow_up_template: string | null
+  active: boolean
+  priority: number
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type QuoteEmailSend = {
+  id: string
+  quote_request_id: string
+  template_id: string | null
+  customer_email: string
+  customer_name: string | null
+  subject: string
+  body: string
+  pdf_url: string | null
+  tone_detected: 'formal' | 'casual' | 'friendly' | 'professional' | null
+  urgency_detected: 'low' | 'medium' | 'high' | 'urgent' | null
+  customer_segment: 'first_time' | 'repeat' | 'high_value' | 'dormant' | null
+  relationship_history: any
+  products_mentioned: string[]
+  value_props_highlighted: string[]
+  follow_up_actions: string[]
+  sent_at: string
+  metadata: any
+  created_at: string
+}
+
+export type QuoteEmailResponse = {
+  id: string
+  email_send_id: string
+  quote_request_id: string
+  response_type: 'reply' | 'acceptance' | 'rejection' | 'question' | 'negotiation' | 'no_response'
+  response_time_hours: number | null
+  response_email_id: string | null
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed' | null
+  converted: boolean
+  conversion_amount: number | null
+  response_details: any
+  detected_at: string
+  created_at: string
+}
+
+export type QuoteTemplatePerformance = {
+  id: string
+  template_id: string
+  customer_segment: 'first_time' | 'repeat' | 'high_value' | 'dormant' | 'all' | null
+  urgency_level: 'low' | 'medium' | 'high' | 'urgent' | 'all' | null
+  sends_count: number
+  reply_count: number
+  reply_rate: number
+  conversion_count: number
+  conversion_rate: number
+  avg_response_time_hours: number | null
+  total_conversion_amount: number
+  avg_conversion_amount: number | null
+  last_updated: string
+  metadata: any
+  created_at: string
+}
+
+export type SupplierRecord = {
+  id: string
+  name: string
+  company: string
+  email: string
+  phone: string | null
+  specialties: string[]
+  relationship_strength: number
+  avg_response_time_hours: number | null
+  reliability_score: number | null
+  last_contact_date: string | null
+  notes: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
+
+export type SupplierProduct = {
+  id: string
+  supplier_id: string
+  product_name: string
+  product_category: string | null
+  manufacturer: string | null
+  model_number: string | null
+  typical_lead_time_days: number | null
+  avg_markup_percentage: number | null
+  last_quoted_price: number | null
+  last_quoted_date: string | null
+  stock_reliability: 'always_in_stock' | 'usually_available' | 'often_delayed' | 'unreliable'
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type SupplierContact = {
+  id: string
+  supplier_id: string
+  contact_name: string
+  email: string
+  phone: string | null
+  role: string | null
+  specializes_in: string[]
+  response_quality_score: number | null
+  preferred_contact: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type EmailSupplierInteraction = {
+  id: string
+  email_log_id: string
+  supplier_id: string
+  interaction_type: 'quote_request' | 'quote_response' | 'stock_inquiry' | 'order_placement' | 'support'
+  products_mentioned: string[]
+  pricing_data: any
+  stock_info: any
+  extracted_at: string
+  created_at: string
+}
