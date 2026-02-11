@@ -43,20 +43,10 @@ async function logToSquadMessages(fromAgent: string, message: string, data: any 
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    status: 'email-poll-route-active',
-    message: 'Use POST with Authorization: Bearer CRON_SECRET',
-    method: 'This route only accepts POST requests from Vercel Cron',
-    timestamp: new Date().toISOString()
-  })
-}
-
-export async function POST(request: NextRequest) {
-  // Verify request is from Vercel Cron or has valid auth
-  if (!verifyCronRequest(request)) {
-    return unauthorizedResponse()
-  }
+/**
+ * Core email poll logic - shared between GET (Vercel Cron) and POST (manual trigger)
+ */
+async function handlePoll() {
 
   try {
     const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.email_poll)
@@ -230,4 +220,24 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+// Vercel Cron sends GET requests - do the actual work
+export async function GET(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({
+      status: 'email-poll-route-active',
+      message: 'Use Authorization: Bearer CRON_SECRET to trigger',
+      timestamp: new Date().toISOString()
+    })
+  }
+  return handlePoll()
+}
+
+// Manual trigger via POST
+export async function POST(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
+  }
+  return handlePoll()
 }

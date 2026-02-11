@@ -83,20 +83,10 @@ function classifyEmail(from: string, subject: string, body: string): {
   return { category, priority }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    status: 'email-classify-route-active',
-    message: 'Use POST with Authorization: Bearer CRON_SECRET',
-    timestamp: new Date().toISOString()
-  })
-}
-
-export async function POST(request: NextRequest) {
-  // Verify request is from Vercel Cron or has valid auth
-  if (!verifyCronRequest(request)) {
-    return unauthorizedResponse()
-  }
-
+/**
+ * Core classification logic - shared between GET (Vercel Cron) and POST (manual trigger)
+ */
+async function handleClassify() {
   try {
     const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.email_classify)
 
@@ -262,4 +252,24 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+// Vercel Cron sends GET requests - do the actual work
+export async function GET(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({
+      status: 'email-classify-route-active',
+      message: 'Use Authorization: Bearer CRON_SECRET to trigger',
+      timestamp: new Date().toISOString()
+    })
+  }
+  return handleClassify()
+}
+
+// Manual trigger via POST
+export async function POST(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
+  }
+  return handleClassify()
 }

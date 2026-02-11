@@ -91,20 +91,10 @@ async function triggerEmailResponse(emailId: string): Promise<{ success: boolean
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    status: 'jarvis-orchestrator-active',
-    message: 'Jarvis orchestrator ready',
-    timestamp: new Date().toISOString(),
-  })
-}
-
-export async function POST(request: NextRequest) {
-  // Verify request is from Vercel Cron or has valid auth
-  if (!verifyCronRequest(request)) {
-    return unauthorizedResponse()
-  }
-
+/**
+ * Core orchestration logic - shared between GET (Vercel Cron) and POST (manual trigger)
+ */
+async function handleOrchestrate() {
   try {
     const rateLimit = await checkRateLimit({
       agentName: 'jarvis_orchestrator',
@@ -453,4 +443,24 @@ Respond ONLY with valid JSON.`
 
     return NextResponse.json({ error: 'Jarvis orchestration failed', details: error.message }, { status: 500 })
   }
+}
+
+// Vercel Cron sends GET requests - do the actual work
+export async function GET(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({
+      status: 'jarvis-orchestrator-active',
+      message: 'Jarvis orchestrator ready',
+      timestamp: new Date().toISOString(),
+    })
+  }
+  return handleOrchestrate()
+}
+
+// Manual trigger via POST
+export async function POST(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
+  }
+  return handleOrchestrate()
 }

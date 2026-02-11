@@ -10,7 +10,6 @@ import { logToSquadMessages } from '@/lib/logger'
 import type { Task } from '@/types/squad'
 
 const DRY_RUN = process.env.AGENT_DRY_RUN === 'true'
-const ENABLE_AUTO_EXECUTION = process.env.ENABLE_AUTO_EXECUTION === 'true'
 
 interface ExecutionResult {
   success: boolean
@@ -88,10 +87,6 @@ export async function fetchExecutableTasks(limit: number = 10): Promise<Task[]> 
  * Execute a single task
  */
 export async function executeTask(task: Task): Promise<ExecutionResult> {
-  if (!ENABLE_AUTO_EXECUTION && !DRY_RUN) {
-    console.log('[SKIPPED] Auto-execution disabled:', task.title)
-    return { success: false, error: 'Auto-execution disabled' }
-  }
 
   console.log(`[EXECUTING] Task ${task.id}: ${task.title}`)
 
@@ -261,11 +256,6 @@ export async function pollAndExecute(): Promise<{
   failed: number
   skipped: number
 }> {
-  if (!ENABLE_AUTO_EXECUTION && !DRY_RUN) {
-    console.log('[TASK EXECUTOR] Auto-execution disabled')
-    return { executed: 0, failed: 0, skipped: 0 }
-  }
-
   console.log('[TASK EXECUTOR] Polling for executable tasks...')
 
   const tasks = await fetchExecutableTasks(10)

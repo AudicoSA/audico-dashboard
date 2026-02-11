@@ -15,20 +15,15 @@ export const maxDuration = 60 // Maximum execution time: 60 seconds
 export const dynamic = 'force-dynamic'
 
 /**
- * POST handler for task execution cron job
+ * Core task execution logic - shared between GET (Vercel Cron) and POST (manual trigger)
  */
-export async function POST(request: NextRequest) {
+async function handleExecute() {
   const startTime = Date.now()
-
-  // 1. Verify cron secret
-  if (!verifyCronRequest(request)) {
-    return unauthorizedResponse()
-  }
 
   console.log('[CRON] Task executor started')
 
   try {
-    // 2. Check rate limit
+    // 1. Check rate limit
     const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.task_executor)
     if (!rateLimit.allowed) {
       console.log('[CRON] Rate limit exceeded, skipping execution')
@@ -43,12 +38,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. Poll and execute tasks
+    // 2. Poll and execute tasks
     const results = await taskExecutor.pollAndExecute()
 
     const duration = Date.now() - startTime
 
-    // 4. Log activity
+    // 3. Log activity
     await logAgentActivity({
       agentName: 'Task Executor',
       eventType: 'cron_execution',
@@ -65,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[CRON] Task executor completed:', results, `(${duration}ms)`)
 
-    // 5. Return results
+    // 4. Return results
     return NextResponse.json({
       success: true,
       executed: results.executed,
@@ -98,23 +93,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * GET handler for status check
- */
+// Vercel Cron sends GET requests - do the actual work
 export async function GET(request: NextRequest) {
-  // Verify cron secret
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({
+      status: 'task-executor-active',
+      message: 'Use Authorization: Bearer CRON_SECRET to trigger',
+      timestamp: new Date().toISOString()
+    })
+  }
+  return handleExecute()
+}
+
+// Manual trigger via POST
+export async function POST(request: NextRequest) {
   if (!verifyCronRequest(request)) {
     return unauthorizedResponse()
   }
-
-  const enabled = process.env.ENABLE_AUTO_EXECUTION === 'true'
-  const dryRun = process.env.AGENT_DRY_RUN === 'true'
-
-  return NextResponse.json({
-    status: 'operational',
-    enabled,
-    dry_run: dryRun,
-    schedule: 'Every 2 minutes',
-    next_execution: 'Determined by Vercel Cron'
-  })
+  return handleExecute()
 }
