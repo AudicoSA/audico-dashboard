@@ -299,7 +299,7 @@ Focus on B2B supplier relationships, not customer emails.`
 
     const result = await chatCompletion(
       [{ role: 'user', content: prompt }],
-      { jsonMode: true, maxTokens: 2000 }
+      { maxTokens: 2000 }
     )
 
     // Track token usage and cost directly in state
@@ -308,7 +308,13 @@ Focus on B2B supplier relationships, not customer emails.`
     state.tokens_used += result.usage.total_tokens
     state.estimated_cost_usd += cost
 
-    const parsed = JSON.parse(result.content)
+    // Extract JSON from response (model may wrap in markdown code blocks)
+    let jsonStr = result.content.trim()
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1].trim()
+    }
+    const parsed = JSON.parse(jsonStr)
     return parsed
   }
 
