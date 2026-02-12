@@ -372,11 +372,21 @@ async function handleOrchestrate() {
     }
 
     // ================================================================
-    // PHASE 2: Use Claude AI for non-email orchestration decisions
-    // Only runs if there are non-email data sources to analyze
+    // PHASE 2: AI orchestration — analyze ALL data sources every cycle
+    // Always runs — Jarvis is the brain that sees everything
     // ================================================================
 
-    const [recentOrders, existingTasks, quoteWorkflowData] = await Promise.all([
+    const [
+      recentOrders,
+      existingTasks,
+      quoteWorkflowData,
+      recentSocialPosts,
+      recentSeoAudits,
+      schemaAuditGaps,
+      pendingResellerApps,
+      recentNewsletters,
+      uncontactedInfluencers,
+    ] = await Promise.all([
       supabase
         .from('order_tracker')
         .select('*')
@@ -385,6 +395,36 @@ async function handleOrchestrate() {
         .limit(10),
       supabase.from('squad_tasks').select('*').in('status', ['new', 'in_progress']),
       gatherQuoteWorkflowData(),
+      supabase
+        .from('social_posts')
+        .select('id, platform, status, created_at, published_at')
+        .order('created_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('seo_audits')
+        .select('id, url, score, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5),
+      supabase
+        .from('seo_schema_audits')
+        .select('id, has_product_schema')
+        .eq('has_product_schema', false)
+        .limit(100),
+      supabase
+        .from('reseller_applications')
+        .select('id, company_name, status')
+        .eq('status', 'pending'),
+      supabase
+        .from('newsletter_drafts')
+        .select('id, status, created_at')
+        .eq('status', 'sent')
+        .order('created_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('influencer_opportunities')
+        .select('id, status')
+        .neq('status', 'contacted')
+        .limit(20),
     ])
 
     let aiTasksCreated: any[] = []
@@ -434,46 +474,91 @@ async function handleOrchestrate() {
       approval_stats: quoteWorkflowData.approval_stats,
     }
 
+    // Calculate days since last social post
+    const lastPostDate = recentSocialPosts.data
+      ?.filter((p: any) => p.status === 'published' && p.published_at)
+      ?.map((p: any) => new Date(p.published_at).getTime())
+      ?.sort((a: number, b: number) => b - a)?.[0]
+    const daysSinceLastPost = lastPostDate
+      ? Math.floor((Date.now() - lastPostDate) / (1000 * 60 * 60 * 24))
+      : 999
+
+    // Calculate days since last SEO audit
+    const lastAuditDate = recentSeoAudits.data?.[0]?.created_at
+    const daysSinceLastAudit = lastAuditDate
+      ? Math.floor((Date.now() - new Date(lastAuditDate).getTime()) / (1000 * 60 * 60 * 24))
+      : 999
+
+    // Calculate days since last newsletter
+    const lastNewsletterDate = recentNewsletters.data?.[0]?.created_at
+    const daysSinceLastNewsletter = lastNewsletterDate
+      ? Math.floor((Date.now() - new Date(lastNewsletterDate).getTime()) / (1000 * 60 * 60 * 24))
+      : 999
+
     const situationReport = {
-      pending_orders: pendingOrders,
-      active_tasks: activeTasks,
+      // Email stats (already processed in Phase 1)
       emails_just_processed: emailResults.processed,
-      orders_sample: recentOrders.data?.slice(0, 5).map((o) => ({
-        order_no: o.order_no,
-        order_name: o.order_name,
-        supplier: o.supplier,
-        notes: o.notes,
-      })),
-      existing_tasks: existingTasks.data?.map((t) => ({
+      emails_responded: emailResults.responded,
+
+      // Social media status
+      recent_posts_count: recentSocialPosts.data?.length || 0,
+      days_since_last_post: daysSinceLastPost,
+      posts_last_7_days: recentSocialPosts.data?.filter((p: any) => {
+        const d = new Date(p.created_at)
+        return d.getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
+      }).length || 0,
+
+      // SEO health
+      days_since_last_seo_audit: daysSinceLastAudit,
+      last_seo_score: recentSeoAudits.data?.[0]?.score ?? null,
+      products_without_schema: schemaAuditGaps.data?.length || 0,
+
+      // Marketing pipeline
+      pending_reseller_applications: pendingResellerApps.data?.length || 0,
+      pending_reseller_names: pendingResellerApps.data?.map((r: any) => r.company_name) || [],
+      days_since_last_newsletter: daysSinceLastNewsletter,
+      uncontacted_influencers: uncontactedInfluencers.data?.length || 0,
+
+      // Orders (existing)
+      pending_orders: pendingOrders,
+
+      // Active tasks (prevent duplicates)
+      active_tasks: existingTasks.data?.map((t: any) => ({
         title: t.title,
         assigned_to: t.assigned_agent,
         status: t.status,
-      })),
+      })) || [],
+
+      // Quote workflow intelligence
       quote_workflow: enrichedQuoteData,
     }
 
-    // Always run AI analysis - not gated behind pendingOrders
+    // Always run Phase 2 — analyze all data sources
     const prompt = `You are Jarvis, the orchestrator AI for Audico's business operations team. You manage a squad of specialized AI agents.
 
 **Your Squad (excluding Email Agent which handles emails automatically):**
-- Social Media Agent: Creates AI-powered social media posts for Facebook, Instagram, Twitter
-- Google Ads Agent: Monitors ad campaigns, suggests bid optimizations, alerts on budget issues
-- SEO Agent: Comprehensive SEO optimization for OpenCart products
-  CAPABILITIES:
-  • audit_products: Analyze product descriptions, meta tags, images
-  • audit_schema: Check Schema.org JSON-LD markup for Google rich snippets
-  • generate_schema: Create Product schema for missing products
-  • check_vitals: Monitor Core Web Vitals (LCP, INP, CLS) via PageSpeed API
-  • analyze_geo: Optimize content for AI search (ChatGPT, Perplexity, Google AI)
-  • apply_fixes: Apply AI-generated SEO improvements
-  • full_audit: Complete SEO health check (products + schema + vitals)
-  PRIORITY TRIGGERS:
-  • Low product views → audit_products + apply_fixes
-  • No rich snippets → audit_schema + generate_schema
-  • High bounce rate → check_vitals
-  • New product batch → full_audit
-- Marketing Agent: Processes reseller applications, manages newsletters, tracks influencers
-- Supplier Intel Agent: Manages supplier relationships, tracks response patterns, intelligence gathering
+
+**Social Media Agent** — Creates AI-powered social media posts for Facebook, Instagram, Twitter
+  TRIGGER CONDITIONS:
+  • No post in 2+ days → Create task: "Generate and schedule social media posts"
+  • 0 posts in last 7 days → Create URGENT task: "Social media has gone silent — generate content immediately"
+
+**SEO Agent** — Comprehensive SEO optimization for OpenCart products
+  CAPABILITIES: audit_products, audit_schema, generate_schema, check_vitals, analyze_geo, apply_fixes, full_audit
+  TRIGGER CONDITIONS:
+  • No audit in 30+ days → Create task: "Run full SEO audit"
+  • Products without Schema.org (>0) → Create task: "Generate schema for untagged products"
+  • SEO score below 60 → Create HIGH priority task: "SEO score critically low — run audit and apply fixes"
+
+**Marketing Agent** — Processes reseller applications, manages newsletters, tracks influencers
+  TRIGGER CONDITIONS:
+  • Pending reseller applications (>0) → Create task for EACH: "Process reseller application for [company]"
+  • No newsletter in 14+ days → Create task: "Generate newsletter draft"
+  • Un-contacted influencers (>0) → Create task: "Send influencer outreach"
+
+**Supplier Intel Agent** — Manages supplier relationships, tracks response patterns, intelligence gathering
+
+**Google Ads Agent** — NOT YET IMPLEMENTED — do NOT create tasks for this agent.
 
 **Quote Workflow Intelligence:**
 ${JSON.stringify(enrichedQuoteData, null, 2)}
@@ -488,17 +573,18 @@ Use this data to make intelligent decisions:
 ${JSON.stringify(situationReport, null, 2)}
 
 **Your Task:**
-Analyze this situation and decide what NON-EMAIL tasks need to be created. Email handling is automatic - do NOT create email tasks.
+Analyze this situation and decide what NON-EMAIL tasks need to be created. Email handling is automatic — do NOT create email tasks.
 
 Respond with JSON:
 {
   "tasks": [
     {
       "title": "Brief task title",
-      "description": "Detailed description",
-      "assigned_agent": "Agent name",
-      "priority": "low | medium | high | urgent",
-      "mentions_kenny": false
+      "description": "Detailed description including what action to take",
+      "assigned_agent": "Social Media Agent" | "SEO Agent" | "Marketing Agent",
+      "priority": "low" | "medium" | "high" | "urgent",
+      "mentions_kenny": false,
+      "metadata": { "action": "relevant_action_name" }
     }
   ],
   "decisions": [
@@ -510,14 +596,16 @@ Respond with JSON:
       "decision_made": {}
     }
   ],
-  "reasoning": "Brief explanation"
+  "reasoning": "Brief explanation of why you created (or didn't create) each task"
 }
 
 **Guidelines:**
 - Do NOT create any email-related tasks (those are handled automatically)
+- Do NOT create tasks for Google Ads Agent (not implemented)
 - Only create tasks that are actionable and specific
-- Don't duplicate existing tasks
+- Don't duplicate active tasks listed above
 - If nothing needs attention, return empty arrays
+- Include metadata.action so the task executor knows what handler to call
 - Log significant decisions (prioritization, escalations, auto-approval recommendations)
 
 Respond ONLY with valid JSON.`
@@ -541,8 +629,9 @@ Respond ONLY with valid JSON.`
       aiReasoning = jarvisDecision.reasoning || ''
 
       for (const taskDef of jarvisDecision.tasks || []) {
-        // Skip any email tasks that Claude might suggest despite instructions
+        // Skip any email or ads tasks
         if (taskDef.assigned_agent === 'Email Agent') continue
+        if (taskDef.assigned_agent === 'Google Ads Agent') continue
 
         const { task, error } = await createTask(
           `[Jarvis] ${taskDef.title}`,
@@ -550,7 +639,7 @@ Respond ONLY with valid JSON.`
           taskDef.assigned_agent,
           taskDef.priority,
           taskDef.mentions_kenny || false,
-          {}
+          taskDef.metadata || {}
         )
 
         if (error) {

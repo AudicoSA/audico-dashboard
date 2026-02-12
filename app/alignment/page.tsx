@@ -165,15 +165,24 @@ export default function AlignmentPage() {
 
         if (!selectedProduct) return;
 
-        if (confirm(`Send '${selectedProduct.name}' to New Products Queue?`)) {
+        // Allow user to edit name before creating
+        const newName = prompt(`Create New Product?\n\nYou can edit the name below before sending to the queue:`, selectedProduct.name);
+
+        if (newName !== null) { // If user didn't cancel
             try {
-                await fetch(`${API_URL}/api/alignment/create`, {
+                const res = await fetch(`${API_URL}/api/alignment/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        internal_product_id: selectedProduct.id
+                        internal_product_id: selectedProduct.id,
+                        name: newName.trim() // Send the (potentially active) name
                     })
                 })
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Unknown error');
+                }
 
                 // Remove from list
                 setUnmatched(prev => prev.filter(p => p.id !== selectedProduct.id))
@@ -184,8 +193,8 @@ export default function AlignmentPage() {
                 // router.push('/products/new')
                 alert('Product added to New Products Queue!')
             } catch (error) {
-                alert('Failed to create product')
-                console.error(error)
+                alert(`Failed to create product: ${error instanceof Error ? error.message : String(error)}`)
+                console.error("Create Product Failed:", error)
             }
         }
     }

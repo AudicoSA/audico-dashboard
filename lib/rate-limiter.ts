@@ -179,4 +179,19 @@ export const AGENT_RATE_LIMITS: Record<string, RateLimitConfig> = {
     maxExecutions: 1,
     windowSeconds: 86400,
   },
+  social_generate: {
+    agentName: 'social_generate',
+    maxExecutions: 2,
+    windowSeconds: 86400,
+  },
+  seo_audit: {
+    agentName: 'seo_audit',
+    maxExecutions: 1,
+    windowSeconds: 86400,
+  },
+  marketing_check: {
+    agentName: 'marketing_check',
+    maxExecutions: 2,
+    windowSeconds: 86400,
+  },
 }
