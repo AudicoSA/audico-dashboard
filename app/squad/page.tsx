@@ -24,6 +24,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import VisualContentPanel from './components/VisualContentPanel'
 import ApprovalQueue from './components/ApprovalQueue'
+import SupplierIntelligencePanel from './components/SupplierIntelligencePanel'
+import QuoteAutomationPanel from './components/QuoteAutomationPanel'
 
 const AGENTS = [
   { id: 'jarvis', name: 'Jarvis', role: 'Master Orchestrator (Claude AI)', color: '#a855f7' },
@@ -32,6 +34,7 @@ const AGENTS = [
   { id: 'google-ads-agent', name: 'Google Ads Agent', role: 'Advertising & PPC', color: '#f59e0b' },
   { id: 'seo-agent', name: 'SEO Agent', role: 'SEO & Product Optimization', color: '#22c55e' },
   { id: 'marketing-agent', name: 'Marketing Agent', role: 'Marketing & Resellers', color: '#14b8a6' },
+  { id: 'supplier', name: 'Supplier Intel', role: 'Intelligence', color: '#06b6d4' },
 ]
 
 type TaskStatus = 'new' | 'in_progress' | 'completed'
@@ -830,6 +833,17 @@ function AgentDetailView({ agent, metrics, tasks, onMoveTask, onTriggerAgent, is
       {(agent.name === 'Naledi' || agent.name === 'Lerato') && (
         <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
           <VisualContentPanel agentName={agent.name as 'Naledi' | 'Lerato'} />
+        </div>
+      )}
+
+      {agent.name === 'Supplier Intel' && (
+        <div className="mt-6 space-y-6">
+          <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+            <SupplierIntelligencePanel />
+          </div>
+          <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+            <QuoteAutomationPanel />
+          </div>
         </div>
       )}
     </div>

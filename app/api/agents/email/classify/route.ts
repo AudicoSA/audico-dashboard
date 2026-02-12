@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit, logAgentExecution, AGENT_RATE_LIMITS } from '@/lib/rate-limiter'
 import { logAgentActivity } from '@/lib/logger'
+import { detectQuoteRequest } from '@/lib/quote-request-detector'
+import { processSupplierResponse } from '@/lib/supplier-response-handler'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -327,6 +329,30 @@ async function handleClassify() {
         )
       } catch (error: any) {
         failed.push({ id: emailLog.id, error: error.message })
+      }
+    }
+
+    // === Quote Detection & Supplier Response Processing (non-fatal) ===
+    const classifiedIds = new Set(classified.map(c => c.id))
+    for (const emailLog of unclassifiedEmails) {
+      if (!classifiedIds.has(emailLog.id)) continue
+
+      try {
+        await detectQuoteRequest({
+          id: emailLog.id,
+          gmail_message_id: emailLog.gmail_message_id,
+          from_email: emailLog.from_email,
+          subject: emailLog.subject,
+          body: emailLog.payload?.body || '',
+        })
+      } catch (err) {
+        console.error('Quote detection failed (non-fatal):', err)
+      }
+
+      try {
+        await processSupplierResponse(emailLog.id)
+      } catch (err) {
+        console.error('Supplier response check failed (non-fatal):', err)
       }
     }
 

@@ -91,6 +91,142 @@ async function triggerEmailResponse(emailId: string): Promise<{ success: boolean
   }
 }
 
+async function logJarvisDecision(
+  decisionType: string,
+  situationContext: any,
+  decisionMade: any,
+  reasoning: string,
+  confidenceScore: number,
+  relatedQuoteRequestId?: string,
+  relatedTaskId?: string
+) {
+  try {
+    await supabase.from('jarvis_decisions').insert({
+      decision_type: decisionType,
+      situation_context: situationContext,
+      decision_made: decisionMade,
+      reasoning,
+      confidence_score: confidenceScore,
+      outcome: 'pending',
+      related_quote_request_id: relatedQuoteRequestId,
+      related_task_id: relatedTaskId,
+    })
+  } catch (error) {
+    console.error('Error logging Jarvis decision:', error)
+  }
+}
+
+async function gatherQuoteWorkflowData() {
+  const now = new Date()
+  const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000)
+
+  const [
+    pendingQuotes,
+    suppliersApproachingDeadline,
+    quotesAwaitingApproval,
+    stuckWorkflows,
+    supplierPatterns,
+    customerHistory,
+    recentApprovalFeedback,
+  ] = await Promise.all([
+    supabase
+      .from('quote_requests')
+      .select('*, source_email_id')
+      .in('status', ['detected', 'suppliers_contacted'])
+      .order('created_at', { ascending: true })
+      .limit(20),
+    supabase
+      .from('email_supplier_interactions')
+      .select('*, suppliers(name, company), quote_requests(id, customer_email, requested_products)')
+      .eq('interaction_type', 'quote_request')
+      .lt('created_at', new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString())
+      .limit(50),
+    supabase
+      .from('squad_tasks')
+      .select('*, metadata')
+      .eq('status', 'new')
+      .eq('assigned_agent', 'Kenny')
+      .eq('metadata->>action_required', 'approve_quote')
+      .order('created_at', { ascending: true })
+      .limit(20),
+    supabase
+      .from('email_supplier_interactions')
+      .select('*, suppliers(name, company, reliability_score), quote_requests(id, customer_email, requested_products, status)')
+      .eq('interaction_type', 'quote_request')
+      .lt('created_at', fortyEightHoursAgo.toISOString())
+      .limit(30),
+    supabase
+      .from('supplier_patterns')
+      .select('*, suppliers(name, company)')
+      .in('confidence_level', ['high', 'verified'])
+      .order('last_observed', { ascending: false })
+      .limit(50),
+    supabase
+      .from('email_logs')
+      .select('from_email, created_at')
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('quote_approval_feedback')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30),
+  ])
+
+  const stuckSupplierRequests = stuckWorkflows.data?.filter((interaction: any) => {
+    const hasResponse = stuckWorkflows.data?.some(
+      (resp: any) =>
+        resp.interaction_type === 'quote_response' &&
+        resp.supplier_id === interaction.supplier_id &&
+        resp.quote_request_id === interaction.quote_request_id
+    )
+    return !hasResponse
+  }) || []
+
+  const approachingDeadlineNoResponse = suppliersApproachingDeadline.data?.filter((interaction: any) => {
+    const hasResponse = suppliersApproachingDeadline.data?.some(
+      (resp: any) =>
+        resp.interaction_type === 'quote_response' &&
+        resp.supplier_id === interaction.supplier_id &&
+        resp.quote_request_id === interaction.quote_request_id
+    )
+    return !hasResponse
+  }) || []
+
+  const customerEmailCounts: Record<string, number> = {}
+  customerHistory.data?.forEach((email: any) => {
+    customerEmailCounts[email.from_email] = (customerEmailCounts[email.from_email] || 0) + 1
+  })
+
+  const approvalStats = {
+    total: recentApprovalFeedback.data?.length || 0,
+    approved: recentApprovalFeedback.data?.filter((f: any) => f.action === 'approved').length || 0,
+    edited: recentApprovalFeedback.data?.filter((f: any) => f.action === 'edited').length || 0,
+    rejected: recentApprovalFeedback.data?.filter((f: any) => f.action === 'rejected').length || 0,
+    avgApprovalTime: 0,
+  }
+
+  const approvalTimes = recentApprovalFeedback.data
+    ?.filter((f: any) => f.approval_time_seconds)
+    .map((f: any) => f.approval_time_seconds) || []
+
+  if (approvalTimes.length > 0) {
+    approvalStats.avgApprovalTime = Math.round(
+      approvalTimes.reduce((sum: number, time: number) => sum + time, 0) / approvalTimes.length
+    )
+  }
+
+  return {
+    pending_quotes: pendingQuotes.data || [],
+    suppliers_approaching_deadline: approachingDeadlineNoResponse,
+    quotes_awaiting_approval: quotesAwaitingApproval.data || [],
+    stuck_workflows: stuckSupplierRequests,
+    supplier_patterns: supplierPatterns.data || [],
+    customer_email_counts: customerEmailCounts,
+    approval_stats: approvalStats,
+  }
+}
+
 /**
  * Core orchestration logic - shared between GET (Vercel Cron) and POST (manual trigger)
  */
@@ -240,7 +376,7 @@ async function handleOrchestrate() {
     // Only runs if there are non-email data sources to analyze
     // ================================================================
 
-    const [recentOrders, existingTasks] = await Promise.all([
+    const [recentOrders, existingTasks, quoteWorkflowData] = await Promise.all([
       supabase
         .from('order_tracker')
         .select('*')
@@ -248,6 +384,7 @@ async function handleOrchestrate() {
         .order('order_no', { ascending: false })
         .limit(10),
       supabase.from('squad_tasks').select('*').in('status', ['new', 'in_progress']),
+      gatherQuoteWorkflowData(),
     ])
 
     let aiTasksCreated: any[] = []
@@ -257,27 +394,66 @@ async function handleOrchestrate() {
     const pendingOrders = recentOrders.data?.length || 0
     const activeTasks = existingTasks.data?.length || 0
 
-    // Only call Claude AI if there are non-email items to analyze
-    // This saves tokens when there are only emails to process
-    if (pendingOrders > 0) {
-      const situationReport = {
-        pending_orders: pendingOrders,
-        active_tasks: activeTasks,
-        emails_just_processed: emailResults.processed,
-        orders_sample: recentOrders.data?.slice(0, 5).map((o) => ({
-          order_no: o.order_no,
-          order_name: o.order_name,
-          supplier: o.supplier,
-          notes: o.notes,
-        })),
-        existing_tasks: existingTasks.data?.map((t) => ({
-          title: t.title,
-          assigned_to: t.assigned_agent,
-          status: t.status,
-        })),
-      }
+    // Enrich quote workflow data for the AI prompt
+    const enrichedQuoteData = {
+      pending_quotes_count: quoteWorkflowData.pending_quotes.length,
+      pending_quotes_sample: quoteWorkflowData.pending_quotes.slice(0, 5).map((q: any) => ({
+        id: q.id,
+        customer_email: q.customer_email,
+        status: q.status,
+        age_hours: Math.round((Date.now() - new Date(q.created_at).getTime()) / (60 * 60 * 1000)),
+        confidence_score: q.confidence_score,
+      })),
+      suppliers_approaching_deadline: quoteWorkflowData.suppliers_approaching_deadline.slice(0, 5).map((s: any) => ({
+        supplier_name: s.suppliers?.name || 'Unknown',
+        quote_request_id: s.quote_request_id,
+        customer_email: s.quote_requests?.customer_email,
+        hours_waiting: Math.round((Date.now() - new Date(s.created_at).getTime()) / (60 * 60 * 1000)),
+      })),
+      quotes_awaiting_approval: quoteWorkflowData.quotes_awaiting_approval.slice(0, 5).map((t: any) => ({
+        task_id: t.id,
+        title: t.title,
+        age_hours: Math.round((Date.now() - new Date(t.created_at).getTime()) / (60 * 60 * 1000)),
+        priority: t.priority,
+        quote_request_id: t.metadata?.quote_request_id,
+      })),
+      stuck_workflows: quoteWorkflowData.stuck_workflows.slice(0, 5).map((s: any) => ({
+        supplier_name: s.suppliers?.name || 'Unknown',
+        supplier_reliability_score: s.suppliers?.reliability_score || 0,
+        quote_request_id: s.quote_request_id,
+        customer_email: s.quote_requests?.customer_email,
+        hours_stuck: Math.round((Date.now() - new Date(s.created_at).getTime()) / (60 * 60 * 1000)),
+      })),
+      supplier_patterns: quoteWorkflowData.supplier_patterns.slice(0, 10).map((p: any) => ({
+        supplier_name: p.suppliers?.name || 'Unknown',
+        pattern_type: p.pattern_type,
+        description: p.pattern_description,
+        confidence: p.confidence_level,
+        actionable_insight: p.actionable_insight,
+      })),
+      approval_stats: quoteWorkflowData.approval_stats,
+    }
 
-      const prompt = `You are Jarvis, the orchestrator AI for Audico's business operations team. You manage a squad of specialized AI agents.
+    const situationReport = {
+      pending_orders: pendingOrders,
+      active_tasks: activeTasks,
+      emails_just_processed: emailResults.processed,
+      orders_sample: recentOrders.data?.slice(0, 5).map((o) => ({
+        order_no: o.order_no,
+        order_name: o.order_name,
+        supplier: o.supplier,
+        notes: o.notes,
+      })),
+      existing_tasks: existingTasks.data?.map((t) => ({
+        title: t.title,
+        assigned_to: t.assigned_agent,
+        status: t.status,
+      })),
+      quote_workflow: enrichedQuoteData,
+    }
+
+    // Always run AI analysis - not gated behind pendingOrders
+    const prompt = `You are Jarvis, the orchestrator AI for Audico's business operations team. You manage a squad of specialized AI agents.
 
 **Your Squad (excluding Email Agent which handles emails automatically):**
 - Social Media Agent: Creates AI-powered social media posts for Facebook, Instagram, Twitter
@@ -297,6 +473,16 @@ async function handleOrchestrate() {
   • High bounce rate → check_vitals
   • New product batch → full_audit
 - Marketing Agent: Processes reseller applications, manages newsletters, tracks influencers
+- Supplier Intel Agent: Manages supplier relationships, tracks response patterns, intelligence gathering
+
+**Quote Workflow Intelligence:**
+${JSON.stringify(enrichedQuoteData, null, 2)}
+
+Use this data to make intelligent decisions:
+1. Prioritize quote requests based on customer profile and age
+2. Escalate if suppliers haven't responded in >48h
+3. Consider auto-approval for repeat buyers with simple quotes from reliable suppliers
+4. Use supplier patterns to optimize supplier selection
 
 **Current Situation:**
 ${JSON.stringify(situationReport, null, 2)}
@@ -315,6 +501,15 @@ Respond with JSON:
       "mentions_kenny": false
     }
   ],
+  "decisions": [
+    {
+      "decision_type": "task_priority | supplier_escalation | auto_approval | supplier_pattern | workflow_optimization",
+      "reasoning": "Why you made this decision",
+      "confidence_score": 0.85,
+      "situation_context": {},
+      "decision_made": {}
+    }
+  ],
   "reasoning": "Brief explanation"
 }
 
@@ -322,57 +517,70 @@ Respond with JSON:
 - Do NOT create any email-related tasks (those are handled automatically)
 - Only create tasks that are actionable and specific
 - Don't duplicate existing tasks
-- If nothing needs attention, return an empty tasks array
+- If nothing needs attention, return empty arrays
+- Log significant decisions (prioritization, escalations, auto-approval recommendations)
 
 Respond ONLY with valid JSON.`
 
-      try {
-        const message = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5-20250929',
-          max_tokens: 1500,
-          messages: [{ role: 'user', content: prompt }],
-        })
+    try {
+      const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      })
 
-        const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+      const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
 
-        // Parse JSON, handling potential markdown code blocks
-        let cleanJson = responseText.trim()
-        if (cleanJson.startsWith('```')) {
-          cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+      // Parse JSON, handling potential markdown code blocks
+      let cleanJson = responseText.trim()
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+      }
+
+      const jarvisDecision = JSON.parse(cleanJson)
+      aiReasoning = jarvisDecision.reasoning || ''
+
+      for (const taskDef of jarvisDecision.tasks || []) {
+        // Skip any email tasks that Claude might suggest despite instructions
+        if (taskDef.assigned_agent === 'Email Agent') continue
+
+        const { task, error } = await createTask(
+          `[Jarvis] ${taskDef.title}`,
+          taskDef.description,
+          taskDef.assigned_agent,
+          taskDef.priority,
+          taskDef.mentions_kenny || false,
+          {}
+        )
+
+        if (error) {
+          aiTasksFailed.push({ taskDef, error: error.message })
+        } else {
+          aiTasksCreated.push(task)
         }
+      }
 
-        const jarvisDecision = JSON.parse(cleanJson)
-        aiReasoning = jarvisDecision.reasoning || ''
-
-        for (const taskDef of jarvisDecision.tasks || []) {
-          // Skip any email tasks that Claude might suggest despite instructions
-          if (taskDef.assigned_agent === 'Email Agent') continue
-
-          const { task, error } = await createTask(
-            taskDef.title,
-            taskDef.description,
-            taskDef.assigned_agent,
-            taskDef.priority,
-            taskDef.mentions_kenny || false,
-            {}
-          )
-
-          if (error) {
-            aiTasksFailed.push({ taskDef, error: error.message })
-          } else {
-            aiTasksCreated.push(task)
-          }
-        }
-      } catch (aiError: any) {
-        console.error('Jarvis AI decision error:', aiError)
-        // AI failure is non-fatal - email processing already completed
-        await logToSquadMessages(
-          'Jarvis',
-          `AI analysis failed (non-fatal): ${aiError.message}`,
-          null,
-          { error: aiError.message }
+      // Log Jarvis decisions
+      for (const decision of jarvisDecision.decisions || []) {
+        await logJarvisDecision(
+          decision.decision_type,
+          decision.situation_context,
+          decision.decision_made,
+          decision.reasoning,
+          decision.confidence_score || 0.7,
+          decision.situation_context?.quote_request_id,
+          decision.situation_context?.task_id
         )
       }
+    } catch (aiError: any) {
+      console.error('Jarvis AI decision error:', aiError)
+      // AI failure is non-fatal - email processing already completed
+      await logToSquadMessages(
+        'Jarvis',
+        `AI analysis failed (non-fatal): ${aiError.message}`,
+        null,
+        { error: aiError.message }
+      )
     }
 
     // ================================================================
