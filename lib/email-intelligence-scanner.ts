@@ -401,6 +401,16 @@ Focus on B2B supplier relationships, not customer emails.`
       .single()
 
     if (error) {
+      // Handle duplicate key - find the existing supplier instead of failing
+      if (error.code === '23505') {
+        const { data: existing } = await this.supabase
+          .from('suppliers')
+          .select('*')
+          .or(`email.eq.${normalizedEmail},company.ilike.%${normalizedCompany}%`)
+          .limit(1)
+          .maybeSingle()
+        if (existing) return existing
+      }
       throw new Error(`Failed to create supplier: ${error.message}`)
     }
 
