@@ -97,6 +97,7 @@ interface ScanProgress {
   estimated_cost_usd: number
   percentage: number
   error_message?: string
+  last_error?: string
 }
 
 const STOCK_RELIABILITY_COLORS = {
@@ -314,6 +315,7 @@ export default function SupplierIntelligencePanel() {
           tokens_used: result.progress.tokens_used,
           estimated_cost_usd: result.progress.estimated_cost_usd,
           percentage: result.progress.percentage,
+          last_error: result.progress.last_error,
         })
 
         hasMore = result.has_more
@@ -490,14 +492,10 @@ export default function SupplierIntelligencePanel() {
                 color="text-yellow-400"
               />
               <StatBox
-                label="Status"
-                value={scanProgress.status}
-                icon={Activity}
-                color={
-                  scanProgress.status === 'completed' ? 'text-lime-400' :
-                  scanProgress.status === 'error' ? 'text-red-400' :
-                  'text-yellow-400'
-                }
+                label="Errors"
+                value={scanProgress.errors}
+                icon={AlertCircle}
+                color={scanProgress.errors > 0 ? 'text-red-400' : 'text-lime-400'}
               />
             </div>
 
@@ -505,6 +503,16 @@ export default function SupplierIntelligencePanel() {
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
                 <p className="text-sm text-red-400">{scanProgress.error_message}</p>
+              </div>
+            )}
+
+            {scanProgress.errors > 0 && scanProgress.last_error && (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-yellow-400 font-medium mb-1">{scanProgress.errors} errors during scan</p>
+                  <p className="text-xs text-yellow-400/80 font-mono break-all">{scanProgress.last_error}</p>
+                </div>
               </div>
             )}
           </div>

@@ -57,6 +57,7 @@ interface ScannerState {
   estimated_cost_usd: number
   status: 'collecting' | 'processing' | 'completed' | 'error'
   error_message?: string
+  last_error?: string
 }
 
 const BATCH_SIZE = 15
@@ -222,6 +223,7 @@ export class EmailIntelligenceScanner {
         console.error(`Error processing Gmail message ${gmailId}:`, error.message)
         state.processed_count++
         state.errors++
+        state.last_error = error.message
         batchResults.push({ gmail_id: gmailId, error: error.message })
       }
     }

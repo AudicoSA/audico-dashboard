@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
         percentage: state.total_messages > 0
           ? Math.round((state.processed_count / state.total_messages) * 100)
           : 0,
+        last_error: state.last_error,
       },
       batch_results,
     })
