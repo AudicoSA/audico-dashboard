@@ -47,13 +47,16 @@ async function logToSquadMessages(fromAgent: string, message: string, data: any 
  * Core email poll logic - shared between GET (Vercel Cron) and POST (manual trigger)
  */
 async function handlePoll() {
+  // Diagnostic log BEFORE rate limit check - to prove cron is calling this endpoint
+  await logToSquadMessages('email_agent', '🔍 handlePoll() entered', { action: 'poll_entered', timestamp: new Date().toISOString() })
 
   try {
     const rateLimit = await checkRateLimit(AGENT_RATE_LIMITS.email_poll)
-    
+
     if (!rateLimit.allowed) {
+      await logToSquadMessages('email_agent', '⛔ Rate limited', { action: 'poll_rate_limited', remaining: rateLimit.remaining, resetAt: new Date(rateLimit.resetAt).toISOString() })
       return NextResponse.json(
-        { 
+        {
           error: 'Rate limit exceeded',
           remaining: rateLimit.remaining,
           resetAt: new Date(rateLimit.resetAt).toISOString(),
@@ -224,7 +227,15 @@ async function handlePoll() {
 
 // Vercel Cron sends GET requests - do the actual work
 export async function GET(request: NextRequest) {
-  if (!verifyCronRequest(request)) {
+  const isCron = verifyCronRequest(request)
+  if (!isCron) {
+    // Log that we received a GET but auth failed - helps diagnose cron issues
+    await logToSquadMessages('email_agent', '🚫 GET received but cron auth failed', {
+      action: 'poll_auth_failed',
+      hasAuthHeader: !!request.headers.get('authorization'),
+      hasVercelCron: !!request.headers.get('x-vercel-cron'),
+      timestamp: new Date().toISOString()
+    })
     return NextResponse.json({
       status: 'email-poll-route-active',
       message: 'Use Authorization: Bearer CRON_SECRET to trigger',
