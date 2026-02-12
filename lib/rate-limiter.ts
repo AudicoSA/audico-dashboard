@@ -34,16 +34,17 @@ export async function checkRateLimit(
   const windowStart = now - config.windowSeconds * 1000
 
   try {
-    const currentCountStr = await getRedis().get(key)
+    const redis = getRedis()
+    const currentCountStr = await redis.get(key)
     const currentCount = currentCountStr ? parseInt(currentCountStr, 10) : 0
-    const lastResetStr = await getRedis().get(`${key}:reset`)
-    const lastReset = lastResetStr ? parseInt(lastResetStr, 10) : now
+    const lastResetStr = await redis.get(`${key}:reset`)
 
-    if (lastReset < windowStart) {
-      await getRedis().set(key, '1')
-      await getRedis().set(`${key}:reset`, now.toString())
-      await getRedis().expire(key, config.windowSeconds)
-      await getRedis().expire(`${key}:reset`, config.windowSeconds)
+    // If no reset timestamp exists OR the window has expired, start a fresh window
+    if (!lastResetStr || parseInt(lastResetStr, 10) < windowStart) {
+      await redis.set(key, '1')
+      await redis.set(`${key}:reset`, now.toString())
+      await redis.expire(key, config.windowSeconds)
+      await redis.expire(`${key}:reset`, config.windowSeconds)
 
       return {
         allowed: true,
@@ -51,6 +52,8 @@ export async function checkRateLimit(
         resetAt: now + config.windowSeconds * 1000,
       }
     }
+
+    const lastReset = parseInt(lastResetStr, 10)
 
     if (currentCount >= config.maxExecutions) {
       return {
@@ -60,7 +63,12 @@ export async function checkRateLimit(
       }
     }
 
-    await getRedis().incr(key)
+    await redis.incr(key)
+    // Ensure TTL is set on the counter key (in case it was created without one)
+    const ttl = await redis.ttl(key)
+    if (ttl < 0) {
+      await redis.expire(key, config.windowSeconds)
+    }
 
     return {
       allowed: true,
