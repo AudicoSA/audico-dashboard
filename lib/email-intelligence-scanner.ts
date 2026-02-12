@@ -60,8 +60,8 @@ interface ScannerState {
 }
 
 const BATCH_SIZE = 15
-const GPT_INPUT_COST = 0.02 / 1_000_000  // $0.02 per 1M input tokens (gpt-4.1-nano)
-const GPT_OUTPUT_COST = 0.15 / 1_000_000  // $0.15 per 1M output tokens (gpt-4.1-nano)
+const GPT_INPUT_COST = 0.40 / 1_000_000  // $0.40 per 1M input tokens (gpt-4.1-mini)
+const GPT_OUTPUT_COST = 1.60 / 1_000_000  // $1.60 per 1M output tokens (gpt-4.1-mini)
 
 export class EmailIntelligenceScanner {
   private supabase: ReturnType<typeof getServerSupabase>
