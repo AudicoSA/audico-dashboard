@@ -32,7 +32,7 @@ export async function chatCompletion(
   }
 
   const body: any = {
-    model: options.model || 'gpt-4o-mini',
+    model: options.model || 'gpt-4.1-nano',
     messages,
     max_tokens: options.maxTokens || 2000,
   }

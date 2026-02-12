@@ -60,8 +60,8 @@ interface ScannerState {
 }
 
 const BATCH_SIZE = 15
-const GPT4O_MINI_INPUT_COST = 0.15 / 1_000_000  // $0.15 per 1M input tokens
-const GPT4O_MINI_OUTPUT_COST = 0.60 / 1_000_000  // $0.60 per 1M output tokens
+const GPT_INPUT_COST = 0.02 / 1_000_000  // $0.02 per 1M input tokens (gpt-4.1-nano)
+const GPT_OUTPUT_COST = 0.15 / 1_000_000  // $0.15 per 1M output tokens (gpt-4.1-nano)
 
 export class EmailIntelligenceScanner {
   private supabase: ReturnType<typeof getServerSupabase>
@@ -185,7 +185,7 @@ export class EmailIntelligenceScanner {
           continue
         }
 
-        const extracted = await this.analyzeEmail(message.from, message.subject, message.body)
+        const extracted = await this.analyzeEmail(message.from, message.subject, message.body, state)
 
         if (extracted.is_supplier_communication && extracted.confidence_score >= 0.6 && extracted.supplier) {
           // Ensure an email_logs row exists for the FK
@@ -239,7 +239,8 @@ export class EmailIntelligenceScanner {
   private async analyzeEmail(
     fromEmail: string,
     subject: string,
-    body: string
+    body: string,
+    state: ScannerState
   ): Promise<ExtractedEmailData> {
     const prompt = `Analyze this email and extract supplier intelligence data.
 
@@ -296,26 +297,19 @@ Look for:
 If this is NOT a supplier communication, return is_supplier_communication: false and confidence_score: 0.
 Focus on B2B supplier relationships, not customer emails.`
 
-    try {
-      const result = await chatCompletion(
-        [{ role: 'user', content: prompt }],
-        { jsonMode: true, maxTokens: 2000 }
-      )
+    const result = await chatCompletion(
+      [{ role: 'user', content: prompt }],
+      { jsonMode: true, maxTokens: 2000 }
+    )
 
-      // Track token usage and cost
-      const cost = (result.usage.prompt_tokens * GPT4O_MINI_INPUT_COST) +
-                   (result.usage.completion_tokens * GPT4O_MINI_OUTPUT_COST)
+    // Track token usage and cost directly in state
+    const cost = (result.usage.prompt_tokens * GPT_INPUT_COST) +
+                 (result.usage.completion_tokens * GPT_OUTPUT_COST)
+    state.tokens_used += result.usage.total_tokens
+    state.estimated_cost_usd += cost
 
-      // We'll accumulate these in the caller via state
-      ;(this as any)._lastTokens = result.usage.total_tokens
-      ;(this as any)._lastCost = cost
-
-      const parsed = JSON.parse(result.content)
-      return parsed
-    } catch (error: any) {
-      console.error('GPT-4o-mini API error:', error.message)
-      return { is_supplier_communication: false, confidence_score: 0 }
-    }
+    const parsed = JSON.parse(result.content)
+    return parsed
   }
 
   private async ensureEmailLogExists(
@@ -558,16 +552,6 @@ Focus on B2B supplier relationships, not customer emails.`
   }
 
   private async saveState(state: ScannerState): Promise<void> {
-    // Accumulate token tracking from last analysis
-    const lastTokens = (this as any)._lastTokens || 0
-    const lastCost = (this as any)._lastCost || 0
-    if (lastTokens > 0) {
-      state.tokens_used += lastTokens
-      state.estimated_cost_usd += lastCost
-      ;(this as any)._lastTokens = 0
-      ;(this as any)._lastCost = 0
-    }
-
     await this.supabase
       .from('squad_messages')
       .insert({
