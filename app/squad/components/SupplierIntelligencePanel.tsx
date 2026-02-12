@@ -360,28 +360,28 @@ export default function SupplierIntelligencePanel() {
   const filteredSuppliers = suppliers.filter(supplier => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      const matchesSearch = 
-        supplier.name.toLowerCase().includes(query) ||
-        supplier.company.toLowerCase().includes(query) ||
-        supplier.email.toLowerCase().includes(query) ||
-        supplier.specialties.some(s => s.toLowerCase().includes(query))
+      const matchesSearch =
+        (supplier.name || '').toLowerCase().includes(query) ||
+        (supplier.company || '').toLowerCase().includes(query) ||
+        (supplier.email || '').toLowerCase().includes(query) ||
+        (supplier.specialties || []).some(s => s?.toLowerCase().includes(query))
       if (!matchesSearch) return false
     }
 
     if (filterSpecialty !== 'all') {
-      if (!supplier.specialties.includes(filterSpecialty)) return false
+      if (!(supplier.specialties || []).includes(filterSpecialty)) return false
     }
 
     if (filterReliability !== 'all') {
       const minScore = parseInt(filterReliability)
-      if (supplier.reliability_score < minScore) return false
+      if ((supplier.reliability_score || 0) < minScore) return false
     }
 
     return true
   })
 
   const allSpecialties = Array.from(
-    new Set(suppliers.flatMap(s => s.specialties))
+    new Set(suppliers.flatMap(s => s.specialties || []).filter(Boolean))
   ).sort()
 
   const selectedSupplierProducts = selectedSupplier 
@@ -785,16 +785,16 @@ function SupplierCard({ supplier, onClick, isSelected, getRelationshipColor, get
         </div>
       </div>
 
-      {supplier.specialties.length > 0 && (
+      {(supplier.specialties || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
-          {supplier.specialties.slice(0, 3).map((specialty, idx) => (
+          {(supplier.specialties || []).slice(0, 3).map((specialty, idx) => (
             <span key={idx} className="text-[10px] px-2 py-1 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
               {specialty}
             </span>
           ))}
-          {supplier.specialties.length > 3 && (
+          {(supplier.specialties || []).length > 3 && (
             <span className="text-[10px] px-2 py-1 rounded bg-white/5 text-gray-400">
-              +{supplier.specialties.length - 3}
+              +{(supplier.specialties || []).length - 3}
             </span>
           )}
         </div>
@@ -952,11 +952,11 @@ function SupplierDetailPanel({ supplier, products, interactions, onClose, getRel
             </div>
           </div>
 
-          {supplier.specialties.length > 0 && (
+          {(supplier.specialties || []).length > 0 && (
             <div>
               <p className="text-xs text-gray-400 mb-2">Specialties</p>
               <div className="flex flex-wrap gap-1">
-                {supplier.specialties.map((specialty, idx) => (
+                {(supplier.specialties || []).map((specialty, idx) => (
                   <span key={idx} className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
                     {specialty}
                   </span>
