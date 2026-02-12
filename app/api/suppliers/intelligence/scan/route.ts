@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { EmailIntelligenceScanner } from '@/lib/email-intelligence-scanner'
 
+export const maxDuration = 120
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -31,19 +33,14 @@ export async function POST(request: NextRequest) {
     }
 
     const scanner = new EmailIntelligenceScanner()
-    const result = await scanner.scanHistoricalEmails(startDate, endDate)
+    const state = await scanner.startScan(startDate, endDate)
 
     return NextResponse.json({
       success: true,
-      job_id: result.job_id,
-      status: result.status,
-      message: 'Historical email scan initiated. Use the job_id to track progress.',
-      progress: {
-        total_emails: result.total_emails,
-        processed_count: result.processed_count,
-        suppliers_found: result.suppliers_found,
-        products_found: result.products_found,
-      },
+      job_id: state.job_id,
+      status: state.status,
+      total_messages: state.total_messages,
+      message: `Found ${state.total_messages} emails in Gmail. Ready to process in batches.`,
     })
 
   } catch (error: any) {
