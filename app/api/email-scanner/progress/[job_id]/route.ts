@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest } from '@/lib/cron-auth'
 import { getServerSupabase } from '@/lib/supabase'
 
 const supabase = getServerSupabase()
@@ -7,6 +8,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ job_id: string }> }
 ) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({ status: 'route-active', timestamp: new Date().toISOString() })
+  }
+
   try {
     const { job_id: jobId } = await params
 

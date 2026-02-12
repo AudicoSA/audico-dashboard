@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import { supabase } from '@/lib/supabase'
 import {
   Building2,
   Mail,
@@ -624,7 +625,6 @@ export function ContactFormModal({ supplierId, onClose, onSubmit }: any) {
 }
 
 export function MarkupModal({ supplier, products, onClose }: any) {
-  const { supabase } = require('@/lib/supabase')
   const [customMarkups, setCustomMarkups] = useState<Record<string, number>>({})
 
   const handleSave = async () => {

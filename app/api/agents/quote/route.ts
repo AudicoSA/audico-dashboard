@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
 import { quoteAgent } from '../../../../services/agents'
 import { createClient } from '@supabase/supabase-js'
 
@@ -23,6 +24,10 @@ async function logToSquad(message: string, data: any = {}) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
+  }
+
   try {
     const body = await request.json()
     const { action, quoteRequestId } = body
@@ -74,6 +79,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({ status: 'route-active', timestamp: new Date().toISOString() })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action')

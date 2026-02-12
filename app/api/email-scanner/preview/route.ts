@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest } from '@/lib/cron-auth'
 import { getServerSupabase } from '@/lib/supabase'
 
 const supabase = getServerSupabase()
@@ -7,6 +8,10 @@ const CLAUDE_COST_PER_1K_TOKENS = 0.003
 const AVG_EMAIL_TOKENS = 500
 
 export async function GET(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({ status: 'route-active', timestamp: new Date().toISOString() })
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get('start_date')

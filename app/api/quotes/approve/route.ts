@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
 import { createClient } from '@supabase/supabase-js'
 import { gmailService } from '../../../../services/integrations/gmail-service'
 
@@ -32,6 +33,10 @@ interface ApprovalRequest {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
+  }
+
   const startTime = Date.now()
 
   try {
@@ -135,7 +140,7 @@ async function handleApproval(
     )
   }
 
-  await supabase
+  const { error: updateQuoteError } = await supabase
     .from('quote_requests')
     .update({
       status: 'sent_to_customer',
@@ -143,13 +148,25 @@ async function handleApproval(
     })
     .eq('id', quoteRequest.id)
 
-  await supabase
+  if (updateQuoteError) {
+    console.error('Failed to update quote request status:', updateQuoteError)
+    return NextResponse.json(
+      { success: false, error: `Failed to update quote status: ${updateQuoteError.message}` },
+      { status: 500 }
+    )
+  }
+
+  const { error: updateDraftError } = await supabase
     .from('email_drafts')
     .update({
       status: 'sent',
       updated_at: new Date().toISOString()
     })
     .eq('id', draftId)
+
+  if (updateDraftError) {
+    console.error('Failed to update email draft status:', updateDraftError)
+  }
 
   await logCustomerInteraction(quoteRequest, quoteNumber, emailResult.messageId)
 
@@ -358,8 +375,13 @@ async function handleEdit(
 
   const newTotal = calculateTotal(editedQuoteData)
 
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : 'http://localhost:3000')
+
   const pdfResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/quote/generate-pdf`,
+    `${baseUrl}/api/quote/generate-pdf`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

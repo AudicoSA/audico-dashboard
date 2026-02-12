@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
 import { getServerSupabase } from '@/lib/supabase'
 
 const supabase = getServerSupabase()
 
 export async function POST(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return unauthorizedResponse()
+  }
+
   try {
     const body = await request.json()
     const { job_id } = body

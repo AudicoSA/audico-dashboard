@@ -36,7 +36,6 @@ import {
   Target
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import StatusBadge from './StatusBadge'
 
 interface QuoteRequest {
   id: string

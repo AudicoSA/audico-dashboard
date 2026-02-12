@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest } from '@/lib/cron-auth'
 import { getServerSupabase } from '@/lib/supabase'
 
 const supabase = getServerSupabase()
 
 export async function GET(request: NextRequest) {
+  if (!verifyCronRequest(request)) {
+    return NextResponse.json({ status: 'route-active', timestamp: new Date().toISOString() })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const specialty = searchParams.get('specialty')
