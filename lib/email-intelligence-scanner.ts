@@ -392,7 +392,6 @@ Focus on B2B supplier relationships, not customer emails.`
         company: supplierData.company,
         email: supplierData.email,
         phone: supplierData.phone,
-        type: 'supplier',
         specialties: supplierData.specialties || [],
         relationship_strength: 50,
         reliability_score: 50,
