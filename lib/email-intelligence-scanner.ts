@@ -1,14 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { getServerSupabase } from './supabase'
-
-interface EmailThread {
-  id: string
-  gmail_message_id: string
-  from_email: string
-  subject: string
-  payload: any
-  created_at: string
-}
+import { gmailService } from '@/services/integrations/gmail-service'
+import { chatCompletion } from './openai-client'
 
 interface SupplierData {
   company: string
@@ -54,262 +46,197 @@ interface ScannerState {
   job_id: string
   start_date: string
   end_date: string
-  total_emails: number
+  total_messages: number
   processed_count: number
   suppliers_found: number
   products_found: number
   contacts_found: number
   interactions_logged: number
-  status: 'running' | 'paused' | 'completed' | 'error'
-  last_processed_email_id?: string
+  errors: number
+  tokens_used: number
+  estimated_cost_usd: number
+  status: 'collecting' | 'processing' | 'completed' | 'error'
   error_message?: string
 }
 
+const BATCH_SIZE = 15
+const GPT4O_MINI_INPUT_COST = 0.15 / 1_000_000  // $0.15 per 1M input tokens
+const GPT4O_MINI_OUTPUT_COST = 0.60 / 1_000_000  // $0.60 per 1M output tokens
+
 export class EmailIntelligenceScanner {
-  private anthropic: Anthropic
   private supabase: ReturnType<typeof getServerSupabase>
-  private state: ScannerState | null = null
-  private isRunning: boolean = false
 
   constructor() {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is required')
-    }
-    
-    this.anthropic = new Anthropic({
-      apiKey: apiKey,
-    })
     this.supabase = getServerSupabase()
   }
 
-  async scanHistoricalEmails(
-    startDate: Date,
-    endDate: Date,
-    resumeJobId?: string
-  ): Promise<ScannerState> {
-    try {
-      if (resumeJobId) {
-        await this.resumeJob(resumeJobId)
-      } else {
-        await this.initializeJob(startDate, endDate)
-      }
-
-      if (!this.state) {
-        throw new Error('Failed to initialize scanner state')
-      }
-
-      this.isRunning = true
-      await this.logProgress('Scan started', { job_id: this.state.job_id })
-
-      const emails = await this.fetchEmailsInRange(
-        new Date(this.state.start_date),
-        new Date(this.state.end_date),
-        this.state.last_processed_email_id
-      )
-
-      if (this.state.total_emails === 0) {
-        this.state.total_emails = emails.length
-      }
-
-      for (const email of emails) {
-        if (!this.isRunning) {
-          this.state.status = 'paused'
-          await this.saveState()
-          break
-        }
-
-        await this.processEmail(email)
-        
-        this.state.processed_count++
-        this.state.last_processed_email_id = email.id
-
-        if (this.state.processed_count % 10 === 0) {
-          await this.logProgress(
-            `Scanned ${this.state.processed_count}/${this.state.total_emails} emails, found ${this.state.suppliers_found} suppliers, ${this.state.products_found} products`,
-            {
-              processed: this.state.processed_count,
-              total: this.state.total_emails,
-              suppliers: this.state.suppliers_found,
-              products: this.state.products_found,
-            }
-          )
-          await this.saveState()
-        }
-      }
-
-      if (this.isRunning) {
-        this.state.status = 'completed'
-        await this.logProgress(
-          `Scan completed: ${this.state.processed_count} emails processed, ${this.state.suppliers_found} suppliers, ${this.state.products_found} products, ${this.state.interactions_logged} interactions`,
-          {
-            final_stats: {
-              processed: this.state.processed_count,
-              suppliers: this.state.suppliers_found,
-              products: this.state.products_found,
-              contacts: this.state.contacts_found,
-              interactions: this.state.interactions_logged,
-            },
-          }
-        )
-      }
-
-      await this.saveState()
-      return this.state
-
-    } catch (error: any) {
-      if (this.state) {
-        this.state.status = 'error'
-        this.state.error_message = error.message
-        await this.saveState()
-      }
-      await this.logProgress(`Scan error: ${error.message}`, { error: error.message })
-      throw error
-    }
-  }
-
-  async pauseScan(): Promise<void> {
-    this.isRunning = false
-  }
-
-  private async initializeJob(startDate: Date, endDate: Date): Promise<void> {
+  /**
+   * Phase 1: Collect all Gmail message IDs in the date range and store them.
+   * Returns the job state with total_messages count.
+   */
+  async startScan(startDate: Date, endDate: Date): Promise<ScannerState> {
     const jobId = `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    
-    this.state = {
+
+    const state: ScannerState = {
       job_id: jobId,
       start_date: startDate.toISOString(),
       end_date: endDate.toISOString(),
-      total_emails: 0,
+      total_messages: 0,
       processed_count: 0,
       suppliers_found: 0,
       products_found: 0,
       contacts_found: 0,
       interactions_logged: 0,
-      status: 'running',
+      errors: 0,
+      tokens_used: 0,
+      estimated_cost_usd: 0,
+      status: 'collecting',
     }
 
-    await this.saveState()
+    await this.saveState(state)
+
+    try {
+      const startStr = `${startDate.getFullYear()}/${String(startDate.getMonth() + 1).padStart(2, '0')}/${String(startDate.getDate()).padStart(2, '0')}`
+      const endStr = `${endDate.getFullYear()}/${String(endDate.getMonth() + 1).padStart(2, '0')}/${String(endDate.getDate()).padStart(2, '0')}`
+      const query = `after:${startStr} before:${endStr}`
+
+      const messageIds = await gmailService.collectAllMessageIds(query)
+
+      state.total_messages = messageIds.length
+      state.status = 'processing'
+
+      // Store message IDs in a separate squad_messages row
+      await this.supabase
+        .from('squad_messages')
+        .insert({
+          from_agent: 'email_intelligence_scanner',
+          to_agent: null,
+          message: `Job ${jobId}: collected ${messageIds.length} message IDs`,
+          task_id: null,
+          data: {
+            job_id: jobId,
+            type: 'message_ids',
+            message_ids: messageIds,
+            timestamp: new Date().toISOString(),
+          },
+        })
+
+      await this.saveState(state)
+      return state
+
+    } catch (error: any) {
+      state.status = 'error'
+      state.error_message = error.message
+      await this.saveState(state)
+      throw error
+    }
   }
 
-  private async resumeJob(jobId: string): Promise<void> {
-    const { data, error } = await this.supabase
+  /**
+   * Phase 2: Process the next batch of emails for a given job.
+   * Returns the updated state and whether there are more emails to process.
+   */
+  async processBatch(jobId: string): Promise<{ state: ScannerState; has_more: boolean; batch_results: any[] }> {
+    // Load current state
+    const state = await this.loadState(jobId)
+    if (!state) {
+      throw new Error(`Job ${jobId} not found`)
+    }
+
+    if (state.status === 'completed' || state.status === 'error') {
+      return { state, has_more: false, batch_results: [] }
+    }
+
+    // Load message IDs
+    const { data: idsRow } = await this.supabase
       .from('squad_messages')
       .select('data')
       .eq('from_agent', 'email_intelligence_scanner')
       .eq('data->>job_id', jobId)
+      .eq('data->>type', 'message_ids')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    if (error || !data?.data?.state) {
-      throw new Error(`Failed to resume job ${jobId}: Job state not found`)
+    if (!idsRow?.data?.message_ids) {
+      throw new Error(`Message IDs not found for job ${jobId}`)
     }
 
-    this.state = data.data.state
-    if (this.state) {
-      this.state.status = 'running'
+    const allIds: string[] = idsRow.data.message_ids
+    const startIdx = state.processed_count
+    const batchIds = allIds.slice(startIdx, startIdx + BATCH_SIZE)
+
+    if (batchIds.length === 0) {
+      state.status = 'completed'
+      await this.saveState(state)
+      return { state, has_more: false, batch_results: [] }
     }
-  }
 
-  private async saveState(): Promise<void> {
-    if (!this.state) return
+    const batchResults: any[] = []
 
-    await this.supabase
-      .from('squad_messages')
-      .insert({
-        from_agent: 'email_intelligence_scanner',
-        to_agent: null,
-        message: `Job state update: ${this.state.status}`,
-        task_id: null,
-        data: {
-          job_id: this.state.job_id,
-          state: this.state,
-          timestamp: new Date().toISOString(),
-        },
-      })
-  }
+    for (const gmailId of batchIds) {
+      try {
+        const message = await gmailService.getMessage(gmailId)
 
-  private async fetchEmailsInRange(
-    startDate: Date,
-    endDate: Date,
-    afterEmailId?: string
-  ): Promise<EmailThread[]> {
-    let query = this.supabase
-      .from('email_logs')
-      .select('*')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at', { ascending: true })
+        // Skip very short or empty emails
+        if (!message.body || message.body.length < 20) {
+          state.processed_count++
+          batchResults.push({ gmail_id: gmailId, skipped: true, reason: 'empty' })
+          continue
+        }
 
-    if (afterEmailId) {
-      const { data: afterEmail } = await this.supabase
-        .from('email_logs')
-        .select('created_at')
-        .eq('id', afterEmailId)
-        .single()
+        const extracted = await this.analyzeEmail(message.from, message.subject, message.body)
 
-      if (afterEmail) {
-        query = query.gt('created_at', afterEmail.created_at)
+        if (extracted.is_supplier_communication && extracted.confidence_score >= 0.6 && extracted.supplier) {
+          // Ensure an email_logs row exists for the FK
+          const emailLogId = await this.ensureEmailLogExists(gmailId, message)
+
+          const supplier = await this.findOrCreateSupplier(extracted.supplier, state)
+
+          if (extracted.products && extracted.products.length > 0) {
+            for (const product of extracted.products) {
+              await this.processProduct(supplier.id, product, extracted.pricing, state)
+            }
+          }
+
+          if (extracted.supplier.contact_name && extracted.supplier.email) {
+            await this.processContact(supplier.id, extracted.supplier, state)
+          }
+
+          if (extracted.interaction_type && emailLogId) {
+            await this.logInteraction(emailLogId, supplier.id, extracted.interaction_type, extracted, state)
+          }
+
+          batchResults.push({
+            gmail_id: gmailId,
+            supplier: extracted.supplier.company,
+            products: extracted.products?.length || 0,
+            confidence: extracted.confidence_score,
+          })
+        } else {
+          batchResults.push({ gmail_id: gmailId, skipped: true, reason: 'not_supplier' })
+        }
+
+        state.processed_count++
+      } catch (error: any) {
+        console.error(`Error processing Gmail message ${gmailId}:`, error.message)
+        state.processed_count++
+        state.errors++
+        batchResults.push({ gmail_id: gmailId, error: error.message })
       }
     }
 
-    const { data, error } = await query
-
-    if (error) {
-      throw new Error(`Failed to fetch emails: ${error.message}`)
+    const hasMore = state.processed_count < state.total_messages
+    if (!hasMore) {
+      state.status = 'completed'
     }
 
-    return (data || []) as EmailThread[]
+    await this.saveState(state)
+
+    return { state, has_more: hasMore, batch_results: batchResults }
   }
 
-  private async processEmail(email: EmailThread): Promise<void> {
-    try {
-      const emailBody = this.extractEmailBody(email.payload)
-      const extractedData = await this.analyzeEmailWithClaude(
-        email.from_email,
-        email.subject,
-        emailBody
-      )
-
-      if (!extractedData.is_supplier_communication || extractedData.confidence_score < 0.6) {
-        return
-      }
-
-      if (extractedData.supplier) {
-        await this.processSupplierData(extractedData.supplier, email, extractedData)
-      }
-
-    } catch (error: any) {
-      console.error(`Error processing email ${email.id}:`, error.message)
-      await this.logProgress(`Error processing email ${email.id}: ${error.message}`, {
-        email_id: email.id,
-        error: error.message,
-      })
-    }
-  }
-
-  private extractEmailBody(payload: any): string {
-    if (!payload) return ''
-    
-    if (payload.body) {
-      return typeof payload.body === 'string' ? payload.body : JSON.stringify(payload.body)
-    }
-    
-    if (payload.snippet) {
-      return payload.snippet
-    }
-    
-    if (payload.parts) {
-      const textParts = payload.parts
-        .filter((p: any) => p.mimeType === 'text/plain' || p.mimeType === 'text/html')
-        .map((p: any) => p.body?.data || '')
-      return textParts.join('\n')
-    }
-    
-    return ''
-  }
-
-  private async analyzeEmailWithClaude(
+  private async analyzeEmail(
     fromEmail: string,
     subject: string,
     body: string
@@ -370,84 +297,76 @@ If this is NOT a supplier communication, return is_supplier_communication: false
 Focus on B2B supplier relationships, not customer emails.`
 
     try {
-      const message = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2000,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      })
-
-      const responseText = message.content[0].type === 'text' 
-        ? message.content[0].text 
-        : ''
-
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        return {
-          is_supplier_communication: false,
-          confidence_score: 0,
-        }
-      }
-
-      const parsed = JSON.parse(jsonMatch[0])
-      return parsed
-
-    } catch (error: any) {
-      console.error('Claude API error:', error.message)
-      return {
-        is_supplier_communication: false,
-        confidence_score: 0,
-      }
-    }
-  }
-
-  private async processSupplierData(
-    supplierData: SupplierData,
-    email: EmailThread,
-    extractedData: ExtractedEmailData
-  ): Promise<void> {
-    const existingSupplier = await this.findOrCreateSupplier(supplierData)
-    
-    if (extractedData.products && extractedData.products.length > 0) {
-      for (const product of extractedData.products) {
-        await this.processProduct(existingSupplier.id, product, extractedData.pricing)
-      }
-    }
-
-    if (supplierData.contact_name && supplierData.email) {
-      await this.processContact(existingSupplier.id, supplierData)
-    }
-
-    if (extractedData.interaction_type) {
-      await this.logInteraction(
-        email.id,
-        existingSupplier.id,
-        extractedData.interaction_type,
-        extractedData
+      const result = await chatCompletion(
+        [{ role: 'user', content: prompt }],
+        { jsonMode: true, maxTokens: 2000 }
       )
+
+      // Track token usage and cost
+      const cost = (result.usage.prompt_tokens * GPT4O_MINI_INPUT_COST) +
+                   (result.usage.completion_tokens * GPT4O_MINI_OUTPUT_COST)
+
+      // We'll accumulate these in the caller via state
+      ;(this as any)._lastTokens = result.usage.total_tokens
+      ;(this as any)._lastCost = cost
+
+      const parsed = JSON.parse(result.content)
+      return parsed
+    } catch (error: any) {
+      console.error('GPT-4o-mini API error:', error.message)
+      return { is_supplier_communication: false, confidence_score: 0 }
     }
   }
 
-  private async findOrCreateSupplier(supplierData: SupplierData): Promise<any> {
+  private async ensureEmailLogExists(
+    gmailId: string,
+    message: { from: string; to: string; subject: string; date: string; body: string; snippet: string }
+  ): Promise<string | null> {
+    // Check if already exists
+    const { data: existing } = await this.supabase
+      .from('email_logs')
+      .select('id')
+      .eq('gmail_message_id', gmailId)
+      .maybeSingle()
+
+    if (existing) return existing.id
+
+    // Insert a lightweight row
+    const { data: inserted, error } = await this.supabase
+      .from('email_logs')
+      .insert({
+        gmail_message_id: gmailId,
+        from_email: message.from,
+        to_email: message.to || null,
+        subject: message.subject,
+        category: 'other',
+        status: 'archived',
+        payload: { snippet: message.snippet },
+        metadata: { source: 'historical_scan' },
+      })
+      .select('id')
+      .maybeSingle()
+
+    if (error) {
+      console.error(`Failed to create email_logs row for ${gmailId}:`, error.message)
+      return null
+    }
+
+    return inserted?.id || null
+  }
+
+  private async findOrCreateSupplier(supplierData: SupplierData, state: ScannerState): Promise<any> {
     const normalizedEmail = supplierData.email.toLowerCase().trim()
     const normalizedCompany = this.normalizeCompanyName(supplierData.company)
 
-    let { data: existingSuppliers, error: searchError } = await this.supabase
+    const { data: existingSuppliers } = await this.supabase
       .from('suppliers')
       .select('*')
       .or(`email.eq.${normalizedEmail},company.ilike.%${normalizedCompany}%`)
 
-    if (searchError) {
-      throw new Error(`Failed to search suppliers: ${searchError.message}`)
-    }
-
     if (existingSuppliers && existingSuppliers.length > 0) {
       const bestMatch = this.findBestSupplierMatch(existingSuppliers, supplierData)
-      
+
       const { data: updated } = await this.supabase
         .from('suppliers')
         .update({
@@ -464,7 +383,7 @@ Focus on B2B supplier relationships, not customer emails.`
       return updated || bestMatch
     }
 
-    const { data: newSupplier, error: insertError } = await this.supabase
+    const { data: newSupplier, error } = await this.supabase
       .from('suppliers')
       .insert({
         name: supplierData.contact_name || 'Unknown Contact',
@@ -478,14 +397,11 @@ Focus on B2B supplier relationships, not customer emails.`
       .select()
       .single()
 
-    if (insertError) {
-      throw new Error(`Failed to create supplier: ${insertError.message}`)
+    if (error) {
+      throw new Error(`Failed to create supplier: ${error.message}`)
     }
 
-    if (this.state) {
-      this.state.suppliers_found++
-    }
-
+    state.suppliers_found++
     return newSupplier
   }
 
@@ -499,20 +415,14 @@ Focus on B2B supplier relationships, not customer emails.`
 
   private findBestSupplierMatch(suppliers: any[], supplierData: SupplierData): any {
     const normalizedEmail = supplierData.email.toLowerCase()
-    
-    const exactEmailMatch = suppliers.find(
-      (s) => s.email.toLowerCase() === normalizedEmail
-    )
+    const exactEmailMatch = suppliers.find((s) => s.email?.toLowerCase() === normalizedEmail)
     if (exactEmailMatch) return exactEmailMatch
 
     const normalizedCompany = this.normalizeCompanyName(supplierData.company)
     const companyMatches = suppliers
       .map((s) => ({
         supplier: s,
-        score: this.calculateSimilarity(
-          this.normalizeCompanyName(s.company),
-          normalizedCompany
-        ),
+        score: this.calculateSimilarity(this.normalizeCompanyName(s.company || ''), normalizedCompany),
       }))
       .sort((a, b) => b.score - a.score)
 
@@ -534,7 +444,8 @@ Focus on B2B supplier relationships, not customer emails.`
   private async processProduct(
     supplierId: string,
     product: ProductData,
-    pricingData?: PricingData[]
+    pricingData: PricingData[] | undefined,
+    state: ScannerState
   ): Promise<void> {
     const normalizedProductName = product.product_name.toLowerCase().trim()
     const normalizedModel = product.model_number?.toUpperCase().trim()
@@ -554,12 +465,7 @@ Focus on B2B supplier relationships, not customer emails.`
     )
 
     if (existingProducts && existingProducts.length > 0) {
-      const bestMatch = existingProducts[0]
-      
-      const updateData: any = {
-        updated_at: new Date().toISOString(),
-      }
-
+      const updateData: any = { updated_at: new Date().toISOString() }
       if (pricing) {
         updateData.last_quoted_price = pricing.price
         updateData.last_quoted_date = new Date().toISOString()
@@ -567,35 +473,26 @@ Focus on B2B supplier relationships, not customer emails.`
           updateData.typical_lead_time_days = pricing.lead_time_days
         }
       }
-
-      await this.supabase
-        .from('supplier_products')
-        .update(updateData)
-        .eq('id', bestMatch.id)
-
+      await this.supabase.from('supplier_products').update(updateData).eq('id', existingProducts[0].id)
       return
     }
 
-    await this.supabase
-      .from('supplier_products')
-      .insert({
-        supplier_id: supplierId,
-        product_name: product.product_name,
-        product_category: product.product_category,
-        manufacturer: product.manufacturer,
-        model_number: product.model_number,
-        last_quoted_price: pricing?.price,
-        last_quoted_date: pricing ? new Date().toISOString() : null,
-        typical_lead_time_days: pricing?.lead_time_days,
-        stock_reliability: 'usually_available',
-      })
+    await this.supabase.from('supplier_products').insert({
+      supplier_id: supplierId,
+      product_name: product.product_name,
+      product_category: product.product_category,
+      manufacturer: product.manufacturer,
+      model_number: product.model_number,
+      last_quoted_price: pricing?.price,
+      last_quoted_date: pricing ? new Date().toISOString() : null,
+      typical_lead_time_days: pricing?.lead_time_days,
+      stock_reliability: 'usually_available',
+    })
 
-    if (this.state) {
-      this.state.products_found++
-    }
+    state.products_found++
   }
 
-  private async processContact(supplierId: string, supplierData: SupplierData): Promise<void> {
+  private async processContact(supplierId: string, supplierData: SupplierData, state: ScannerState): Promise<void> {
     const normalizedEmail = supplierData.email.toLowerCase().trim()
 
     const { data: existingContact } = await this.supabase
@@ -603,7 +500,7 @@ Focus on B2B supplier relationships, not customer emails.`
       .select('*')
       .eq('supplier_id', supplierId)
       .eq('email', normalizedEmail)
-      .single()
+      .maybeSingle()
 
     if (existingContact) {
       await this.supabase
@@ -614,85 +511,107 @@ Focus on B2B supplier relationships, not customer emails.`
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingContact.id)
-
       return
     }
 
-    await this.supabase
-      .from('supplier_contacts')
-      .insert({
-        supplier_id: supplierId,
-        contact_name: supplierData.contact_name!,
-        email: supplierData.email,
-        phone: supplierData.phone,
-        preferred_contact: false,
-      })
+    await this.supabase.from('supplier_contacts').insert({
+      supplier_id: supplierId,
+      contact_name: supplierData.contact_name!,
+      email: supplierData.email,
+      phone: supplierData.phone,
+      preferred_contact: false,
+    })
 
-    if (this.state) {
-      this.state.contacts_found++
-    }
+    state.contacts_found++
   }
 
   private async logInteraction(
     emailLogId: string,
     supplierId: string,
     interactionType: string,
-    extractedData: ExtractedEmailData
+    extractedData: ExtractedEmailData,
+    state: ScannerState
   ): Promise<void> {
     const productsMentioned = extractedData.products?.map((p) => p.product_name) || []
-    
+
     const pricingData = extractedData.pricing?.reduce((acc, p) => {
-      acc[p.product] = {
-        price: p.price,
-        currency: p.currency,
-        quantity: p.quantity,
-        lead_time_days: p.lead_time_days,
-      }
+      acc[p.product] = { price: p.price, currency: p.currency, quantity: p.quantity, lead_time_days: p.lead_time_days }
       return acc
     }, {} as any)
 
     const stockInfo = extractedData.stock_info?.reduce((acc, s) => {
-      acc[s.product] = {
-        availability: s.availability,
-        stock_reliability: s.stock_reliability,
-      }
+      acc[s.product] = { availability: s.availability, stock_reliability: s.stock_reliability }
       return acc
     }, {} as any)
 
-    await this.supabase
-      .from('email_supplier_interactions')
-      .insert({
-        email_log_id: emailLogId,
-        supplier_id: supplierId,
-        interaction_type: interactionType,
-        products_mentioned: productsMentioned,
-        pricing_data: pricingData || {},
-        stock_info: stockInfo || {},
-        extracted_at: new Date().toISOString(),
-      })
+    await this.supabase.from('email_supplier_interactions').insert({
+      email_log_id: emailLogId,
+      supplier_id: supplierId,
+      interaction_type: interactionType,
+      products_mentioned: productsMentioned,
+      pricing_data: pricingData || {},
+      stock_info: stockInfo || {},
+      extracted_at: new Date().toISOString(),
+    })
 
-    if (this.state) {
-      this.state.interactions_logged++
-    }
+    state.interactions_logged++
   }
 
-  private async logProgress(message: string, data: any = {}): Promise<void> {
+  private async saveState(state: ScannerState): Promise<void> {
+    // Accumulate token tracking from last analysis
+    const lastTokens = (this as any)._lastTokens || 0
+    const lastCost = (this as any)._lastCost || 0
+    if (lastTokens > 0) {
+      state.tokens_used += lastTokens
+      state.estimated_cost_usd += lastCost
+      ;(this as any)._lastTokens = 0
+      ;(this as any)._lastCost = 0
+    }
+
     await this.supabase
       .from('squad_messages')
       .insert({
         from_agent: 'email_intelligence_scanner',
         to_agent: null,
-        message,
+        message: `Job ${state.job_id}: ${state.status} (${state.processed_count}/${state.total_messages})`,
         task_id: null,
-        data,
+        data: {
+          job_id: state.job_id,
+          type: 'state',
+          state,
+          timestamp: new Date().toISOString(),
+        },
       })
   }
 
-  getState(): ScannerState | null {
-    return this.state
+  private async loadState(jobId: string): Promise<ScannerState | null> {
+    const { data } = await this.supabase
+      .from('squad_messages')
+      .select('data')
+      .eq('from_agent', 'email_intelligence_scanner')
+      .eq('data->>job_id', jobId)
+      .eq('data->>type', 'state')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    return data?.data?.state || null
+  }
+
+  /** @deprecated Use startScan() + processBatch() instead */
+  async scanHistoricalEmails(startDate: Date, endDate: Date, _resumeJobId?: string): Promise<ScannerState> {
+    const state = await this.startScan(startDate, endDate)
+    let hasMore = true
+    while (hasMore) {
+      const result = await this.processBatch(state.job_id)
+      hasMore = result.has_more
+      Object.assign(state, result.state)
+    }
+    return state
   }
 }
 
+/** @deprecated Use new EmailIntelligenceScanner().startScan() + .processBatch() */
 export async function scanHistoricalEmails(
   startDate: Date,
   endDate: Date,
@@ -702,6 +621,7 @@ export async function scanHistoricalEmails(
   return await scanner.scanHistoricalEmails(startDate, endDate, resumeJobId)
 }
 
+/** @deprecated */
 export async function createScannerInstance(): Promise<EmailIntelligenceScanner> {
   return new EmailIntelligenceScanner()
 }

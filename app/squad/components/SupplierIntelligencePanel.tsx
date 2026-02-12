@@ -85,13 +85,17 @@ interface SupplierInteraction {
 
 interface ScanProgress {
   job_id: string
-  status: 'running' | 'paused' | 'completed' | 'error'
-  total_emails: number
+  status: 'collecting' | 'processing' | 'completed' | 'error'
+  total_messages: number
   processed_count: number
   suppliers_found: number
   products_found: number
   contacts_found: number
   interactions_logged: number
+  errors: number
+  tokens_used: number
+  estimated_cost_usd: number
+  percentage: number
   error_message?: string
 }
 
@@ -124,7 +128,7 @@ export default function SupplierIntelligencePanel() {
   const [isScanning, setIsScanning] = useState(false)
   const [scanStartDate, setScanStartDate] = useState(() => {
     const date = new Date()
-    date.setDate(date.getDate() - 30)
+    date.setFullYear(date.getFullYear() - 2)
     return date.toISOString().split('T')[0]
   })
   const [scanEndDate, setScanEndDate] = useState(() => {
@@ -232,10 +236,11 @@ export default function SupplierIntelligencePanel() {
   const handleStartScan = async () => {
     try {
       setIsScanning(true)
-      
+
       const startDateTime = new Date(scanStartDate + 'T00:00:00Z')
       const endDateTime = new Date(scanEndDate + 'T23:59:59Z')
 
+      // Phase 1: Collect Gmail message IDs
       const response = await fetch('/api/suppliers/intelligence/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -246,51 +251,83 @@ export default function SupplierIntelligencePanel() {
       })
 
       const result = await response.json()
-      
-      if (result.success) {
-        setScanProgress({
-          job_id: result.job_id,
-          status: result.status,
-          total_emails: result.progress.total_emails,
-          processed_count: result.progress.processed_count,
-          suppliers_found: result.progress.suppliers_found,
-          products_found: result.progress.products_found,
-          contacts_found: 0,
-          interactions_logged: 0
-        })
-        
-        pollScanProgress(result.job_id)
+
+      if (!result.success) {
+        console.error('Scan start failed:', result.error)
+        setIsScanning(false)
+        return
       }
+
+      setScanProgress({
+        job_id: result.job_id,
+        status: 'processing',
+        total_messages: result.total_messages,
+        processed_count: 0,
+        suppliers_found: 0,
+        products_found: 0,
+        contacts_found: 0,
+        interactions_logged: 0,
+        errors: 0,
+        tokens_used: 0,
+        estimated_cost_usd: 0,
+        percentage: 0,
+      })
+
+      // Phase 2: Process batches sequentially
+      await processBatches(result.job_id)
+
     } catch (error) {
       console.error('Failed to start scan:', error)
       setIsScanning(false)
     }
   }
 
-  const pollScanProgress = async (jobId: string) => {
-    const pollInterval = setInterval(async () => {
+  const processBatches = async (jobId: string) => {
+    let hasMore = true
+
+    while (hasMore) {
       try {
-        const response = await fetch(`/api/suppliers/intelligence/scan/progress/${jobId}`)
+        const response = await fetch('/api/suppliers/intelligence/scan/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_id: jobId })
+        })
+
         const result = await response.json()
-        
-        if (result.success && result.progress) {
-          setScanProgress(result.progress)
-          
-          if (result.progress.status === 'completed' || result.progress.status === 'error') {
-            clearInterval(pollInterval)
-            setIsScanning(false)
-            await fetchAllData()
-          }
+
+        if (!result.success) {
+          console.error('Batch failed:', result.error)
+          setIsScanning(false)
+          return
+        }
+
+        setScanProgress({
+          job_id: jobId,
+          status: result.progress.status,
+          total_messages: result.progress.total_messages,
+          processed_count: result.progress.processed_count,
+          suppliers_found: result.progress.suppliers_found,
+          products_found: result.progress.products_found,
+          contacts_found: result.progress.contacts_found,
+          interactions_logged: result.progress.interactions_logged,
+          errors: result.progress.errors,
+          tokens_used: result.progress.tokens_used,
+          estimated_cost_usd: result.progress.estimated_cost_usd,
+          percentage: result.progress.percentage,
+        })
+
+        hasMore = result.has_more
+
+        if (!hasMore) {
+          setIsScanning(false)
+          await fetchAllData()
         }
       } catch (error) {
-        console.error('Failed to poll scan progress:', error)
+        console.error('Batch processing error:', error)
+        setIsScanning(false)
+        return
       }
-    }, 2000)
-
-    setTimeout(() => {
-      clearInterval(pollInterval)
-      setIsScanning(false)
-    }, 300000)
+    }
   }
 
   const formatTimeAgo = (dateString: string) => {
@@ -417,18 +454,14 @@ export default function SupplierIntelligencePanel() {
             <div className="relative w-full bg-white/5 rounded-full h-3 overflow-hidden">
               <div
                 className="absolute inset-y-0 left-0 bg-gradient-to-r from-lime-400 to-green-500 transition-all duration-500"
-                style={{ 
-                  width: scanProgress.total_emails > 0 
-                    ? `${(scanProgress.processed_count / scanProgress.total_emails) * 100}%` 
-                    : '0%' 
-                }}
+                style={{ width: `${scanProgress.percentage}%` }}
               />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               <StatBox
                 label="Emails Scanned"
-                value={`${scanProgress.processed_count} / ${scanProgress.total_emails}`}
+                value={`${scanProgress.processed_count} / ${scanProgress.total_messages}`}
                 icon={Mail}
                 color="text-blue-400"
               />
@@ -449,6 +482,12 @@ export default function SupplierIntelligencePanel() {
                 value={scanProgress.contacts_found}
                 icon={MessageSquare}
                 color="text-green-400"
+              />
+              <StatBox
+                label="Est. Cost"
+                value={`$${scanProgress.estimated_cost_usd.toFixed(2)}`}
+                icon={DollarSign}
+                color="text-yellow-400"
               />
               <StatBox
                 label="Status"

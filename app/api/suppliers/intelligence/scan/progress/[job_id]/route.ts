@@ -15,9 +15,10 @@ export async function GET(
       .select('data, created_at')
       .eq('from_agent', 'email_intelligence_scanner')
       .eq('data->>job_id', jobId)
+      .eq('data->>type', 'state')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (error || !data?.data?.state) {
       return NextResponse.json(
@@ -33,14 +34,17 @@ export async function GET(
       job_id: jobId,
       status: state.status,
       progress: {
-        total_emails: state.total_emails,
+        total_messages: state.total_messages,
         processed_count: state.processed_count,
         suppliers_found: state.suppliers_found,
         products_found: state.products_found,
         contacts_found: state.contacts_found,
         interactions_logged: state.interactions_logged,
-        percentage: state.total_emails > 0 
-          ? Math.round((state.processed_count / state.total_emails) * 100) 
+        errors: state.errors || 0,
+        tokens_used: state.tokens_used || 0,
+        estimated_cost_usd: Math.round((state.estimated_cost_usd || 0) * 100) / 100,
+        percentage: state.total_messages > 0
+          ? Math.round((state.processed_count / state.total_messages) * 100)
           : 0,
       },
       start_date: state.start_date,
