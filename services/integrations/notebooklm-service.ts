@@ -60,7 +60,8 @@ export class NotebookLMService {
     this.pythonPath = process.env.NOTEBOOKLM_PYTHON_PATH
 
     if (!this.projectId && !this.pythonPath) {
-      throw new Error('Either GOOGLE_CLOUD_PROJECT_ID or NOTEBOOKLM_PYTHON_PATH must be set')
+      console.warn('NotebookLM: Neither GOOGLE_CLOUD_PROJECT_ID nor NOTEBOOKLM_PYTHON_PATH is set - service will be unavailable')
+      return
     }
 
     this.initializeClient()

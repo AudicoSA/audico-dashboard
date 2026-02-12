@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/maintenance/cleanup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/supplier-scoring/update",
+      "schedule": "0 8 * * 1"
     }
   ],
   "rewrites": [
