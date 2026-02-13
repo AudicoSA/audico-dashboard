@@ -27,6 +27,12 @@ import VisualContentPanel from './components/VisualContentPanel'
 import ApprovalQueue from './components/ApprovalQueue'
 import SupplierIntelligencePanel from './components/SupplierIntelligencePanel'
 import QuoteAutomationPanel from './components/QuoteAutomationPanel'
+import SocialAgentPanel from './components/SocialAgentPanel'
+import AdsAgentPanel from './components/AdsAgentPanel'
+import SeoAgentPanel from './components/SeoAgentPanel'
+import MarketingAgentPanel from './components/MarketingAgentPanel'
+import EmailAgentPanel from './components/EmailAgentPanel'
+import OrchestratorPanel from './components/OrchestratorPanel'
 
 const AGENTS = [
   { id: 'jarvis', name: 'Jarvis', role: 'Master Orchestrator (Claude AI)', color: '#a855f7' },
@@ -839,6 +845,42 @@ function AgentDetailView({ agent, metrics, tasks, onMoveTask, onTriggerAgent, is
           ))}
         </KanbanColumn>
       </div>
+
+      {agent.name === 'Jarvis' && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <OrchestratorPanel />
+        </div>
+      )}
+
+      {agent.name === 'Email Agent' && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <EmailAgentPanel />
+        </div>
+      )}
+
+      {agent.name === 'Social Media Agent' && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <SocialAgentPanel />
+        </div>
+      )}
+
+      {agent.name === 'Google Ads Agent' && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <AdsAgentPanel />
+        </div>
+      )}
+
+      {agent.name === 'SEO Agent' && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <SeoAgentPanel />
+        </div>
+      )}
+
+      {agent.name === 'Marketing Agent' && (
+        <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
+          <MarketingAgentPanel />
+        </div>
+      )}
 
       {(agent.name === 'Naledi' || agent.name === 'Lerato') && (
         <div className="mt-6 bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
