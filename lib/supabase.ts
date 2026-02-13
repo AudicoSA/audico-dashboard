@@ -607,3 +607,33 @@ export type EmailSupplierInteraction = {
   extracted_at: string
   created_at: string
 }
+
+export type PredictiveQuoteOpportunity = {
+  id: string
+  customer_email: string
+  customer_name: string | null
+  predicted_products: Array<{
+    product_name: string
+    category: string
+    confidence: number
+    reasoning: string
+  }>
+  confidence_score: number
+  trigger_reason: 'repeat_purchase_due' | 'seasonal_opportunity' | 'product_interest_detected' | 'competitor_mention'
+  suggested_discount: number
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  status: 'new' | 'review_pending' | 'quote_generated' | 'contacted' | 'converted' | 'dismissed'
+  metadata: {
+    last_purchase_date: string | null
+    avg_order_value: number
+    purchase_frequency_days: number | null
+    interaction_signals: string[]
+    seasonal_factors: any[]
+    competitor_mentions: string[]
+    next_expected_purchase: string | null
+  }
+  identified_at: string
+  actioned_at: string | null
+  created_at: string
+  updated_at: string
+}
