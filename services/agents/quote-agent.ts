@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { gmailService } from '../integrations/gmail-service'
+import { quotePricingIntelligence } from '../../lib/quote-pricing-intelligence'
 
 interface QuoteRequestItem {
   product_name: string
@@ -279,11 +280,55 @@ export class QuoteAgent {
   ): Promise<QuoteDetails> {
     const quoteNumber = this.generateQuoteNumber()
     
-    const markups = await this.fetchMarkupRules()
-    const defaultMarkup = await this.calculateAverageMarkup(productQuotes)
+    const customerSegment = await this.determineCustomerSegment(quoteRequest)
+    const urgencyLevel = await this.determineUrgencyLevel(quoteRequest)
+    const orderSizeCategory = this.determineOrderSize(productQuotes)
+
+    await this.updateQuoteRequestMetadata(quoteRequest.id, {
+      customer_segment: customerSegment,
+      urgency_level: urgencyLevel,
+      order_size_category: orderSizeCategory
+    })
+
+    const intelligentPricing = await quotePricingIntelligence.getIntelligentPricing({
+      customerEmail: quoteRequest.customer_email,
+      customerSegment,
+      products: productQuotes.map(q => ({
+        name: q.product_name,
+        category: this.categorizeProduct(q.product_name),
+        quantity: q.quantity,
+        costPrice: q.unit_price
+      })),
+      urgencyLevel,
+      orderSizeCategory
+    })
+
+    await this.logToSquad(
+      `🎯 Intelligent pricing applied for ${quoteRequest.customer_name}: ` +
+      `${intelligentPricing.base_markup.toFixed(1)}% markup (confidence: ${(intelligentPricing.confidence * 100).toFixed(0)}%) - ${intelligentPricing.reasoning}`,
+      {
+        quote_request_id: quoteRequest.id,
+        pricing: intelligentPricing,
+        customer_segment: customerSegment,
+        urgency: urgencyLevel,
+        order_size: orderSizeCategory
+      }
+    )
 
     const items = await Promise.all(productQuotes.map(async (quote, index) => {
-      const markup = this.findApplicableMarkup(quote.product_name, markups, defaultMarkup)
+      const productCategory = this.categorizeProduct(quote.product_name)
+      
+      let markup = intelligentPricing.base_markup
+      
+      const productAdjustment = intelligentPricing.adjustments.find(
+        a => a.factor === 'product_category'
+      )
+      if (productAdjustment) {
+        markup += productAdjustment.adjustment * 0.5
+      }
+
+      markup = Math.max(intelligentPricing.min_markup, Math.min(intelligentPricing.max_markup, markup))
+
       const costPrice = quote.unit_price
       const sellingPrice = costPrice * (1 + markup / 100)
 
@@ -295,7 +340,14 @@ export class QuoteAgent {
         unit_price: Math.round(sellingPrice * 100) / 100,
         total_price: Math.round(sellingPrice * quote.quantity * 100) / 100,
         supplier: quote.supplier_company,
-        lead_time: quote.lead_time
+        lead_time: quote.lead_time,
+        metadata: {
+          cost_price: costPrice,
+          markup_percentage: markup,
+          product_category: productCategory,
+          intelligent_pricing_applied: true,
+          confidence: intelligentPricing.confidence
+        }
       }
     }))
 
@@ -325,7 +377,29 @@ export class QuoteAgent {
       metadata: {
         generated_by: this.agentName,
         supplier_count: new Set(productQuotes.map(q => q.supplier_company)).size,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
+        quoted_items: items.map(item => ({
+          product_name: item.product_name,
+          product_category: item.metadata?.product_category,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          cost_price: item.metadata?.cost_price,
+          markup_percentage: item.metadata?.markup_percentage,
+          total_price: item.total_price
+        })),
+        total_amount: total,
+        customer_segment: customerSegment,
+        urgency_level: urgencyLevel,
+        order_size_category: orderSizeCategory,
+        intelligent_pricing: {
+          base_markup: intelligentPricing.base_markup,
+          confidence: intelligentPricing.confidence,
+          reasoning: intelligentPricing.reasoning,
+          adjustments: intelligentPricing.adjustments.map(a => ({
+            factor: a.factor,
+            adjustment: a.adjustment
+          }))
+        }
       }
     }
   }
@@ -426,11 +500,23 @@ export class QuoteAgent {
   }
 
   private async updateQuoteRequestWithPdf(quoteRequestId: string, pdfUrl: string): Promise<void> {
+    const { data: existing } = await this.getSupabase()
+      .from('quote_requests')
+      .select('metadata')
+      .eq('id', quoteRequestId)
+      .single()
+
+    const existingMetadata = existing?.metadata || {}
+
     await this.getSupabase()
       .from('quote_requests')
       .update({
         status: 'pdf_generated',
         pdf_url: pdfUrl,
+        metadata: {
+          ...existingMetadata,
+          pdf_generated_at: new Date().toISOString()
+        },
         updated_at: new Date().toISOString()
       })
       .eq('id', quoteRequestId)
@@ -583,6 +669,136 @@ ${quoteDetails.items.map(item => `- ${item.product_name} (Qty: ${item.quantity})
       })
 
     return data.id
+  }
+
+  private async determineCustomerSegment(quoteRequest: QuoteRequest): Promise<string> {
+    const { data: pastQuotes } = await this.getSupabase()
+      .from('quote_outcomes')
+      .select('total_quoted_amount, outcome')
+      .eq('customer_email', quoteRequest.customer_email)
+      .order('outcome_date', { ascending: false })
+      .limit(10)
+
+    if (!pastQuotes || pastQuotes.length === 0) {
+      return 'new_customer'
+    }
+
+    const avgOrderValue = pastQuotes.reduce((sum, q) => sum + q.total_quoted_amount, 0) / pastQuotes.length
+    const acceptanceRate = pastQuotes.filter(q => q.outcome === 'accepted').length / pastQuotes.length
+
+    if (avgOrderValue > 50000) {
+      return 'enterprise'
+    } else if (avgOrderValue > 20000) {
+      return acceptanceRate > 0.7 ? 'premium' : 'mid_market'
+    } else if (avgOrderValue > 5000) {
+      return acceptanceRate > 0.6 ? 'loyal_smb' : 'price_sensitive_smb'
+    } else {
+      return 'small_buyer'
+    }
+  }
+
+  private async determineUrgencyLevel(quoteRequest: QuoteRequest): Promise<'low' | 'medium' | 'high' | 'urgent'> {
+    const keywords = {
+      urgent: ['urgent', 'asap', 'immediately', 'emergency', 'critical', 'rush'],
+      high: ['soon', 'quickly', 'fast', 'this week', 'needed by', 'deadline'],
+      medium: ['next week', 'upcoming', 'planning', 'scheduled'],
+    }
+
+    const metadata = quoteRequest.metadata || {}
+    const text = (metadata.message_content || '').toLowerCase()
+
+    for (const word of keywords.urgent) {
+      if (text.includes(word)) return 'urgent'
+    }
+
+    for (const word of keywords.high) {
+      if (text.includes(word)) return 'high'
+    }
+
+    for (const word of keywords.medium) {
+      if (text.includes(word)) return 'medium'
+    }
+
+    return 'low'
+  }
+
+  private determineOrderSize(productQuotes: ProductQuote[]): 'small' | 'medium' | 'large' | 'enterprise' {
+    const totalValue = productQuotes.reduce((sum, q) => sum + (q.unit_price * q.quantity), 0)
+    const itemCount = productQuotes.reduce((sum, q) => sum + q.quantity, 0)
+
+    if (totalValue > 100000 || itemCount > 100) {
+      return 'enterprise'
+    } else if (totalValue > 30000 || itemCount > 30) {
+      return 'large'
+    } else if (totalValue > 10000 || itemCount > 10) {
+      return 'medium'
+    } else {
+      return 'small'
+    }
+  }
+
+  private categorizeProduct(productName: string): string {
+    const lower = productName.toLowerCase()
+
+    if (lower.includes('speaker') || lower.includes('amplifier') || lower.includes('mixer') || 
+        lower.includes('microphone') || lower.includes('audio') || lower.includes('sound')) {
+      return 'audio'
+    }
+
+    if (lower.includes('projector') || lower.includes('screen') || lower.includes('display') || 
+        lower.includes('monitor') || lower.includes('video') || lower.includes('led') || 
+        lower.includes('visual')) {
+      return 'visual'
+    }
+
+    if (lower.includes('cable') || lower.includes('connector') || lower.includes('adapter') || 
+        lower.includes('mount') || lower.includes('bracket') || lower.includes('stand')) {
+      return 'cables'
+    }
+
+    if (lower.includes('light') || lower.includes('lighting') || lower.includes('lamp')) {
+      return 'lighting'
+    }
+
+    if (lower.includes('control') || lower.includes('processor') || lower.includes('switcher')) {
+      return 'control_systems'
+    }
+
+    return 'general'
+  }
+
+  private async updateQuoteRequestMetadata(quoteRequestId: string, metadata: {
+    customer_segment?: string
+    urgency_level?: string
+    order_size_category?: string
+  }): Promise<void> {
+    try {
+      const { data: existing } = await this.getSupabase()
+        .from('quote_requests')
+        .select('metadata')
+        .eq('id', quoteRequestId)
+        .single()
+
+      const existingMetadata = existing?.metadata || {}
+
+      await this.getSupabase()
+        .from('quote_requests')
+        .update({
+          customer_segment: metadata.customer_segment,
+          urgency_level: metadata.urgency_level,
+          order_size_category: metadata.order_size_category,
+          metadata: {
+            ...existingMetadata,
+            ...metadata,
+            intelligent_pricing_applied: true,
+            analysis_timestamp: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', quoteRequestId)
+    } catch (error) {
+      console.error('Error updating quote request metadata:', error)
+    }
   }
 
   private async logToSquad(message: string, data: any = {}): Promise<void> {
