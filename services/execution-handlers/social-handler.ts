@@ -65,6 +65,8 @@ export async function socialPublishHandler(task: Task): Promise<ExecutionResult>
 
 /**
  * Generate social media content drafts for approval
+ * Creates the post text via Claude, attaches product images, and
+ * optionally generates a visual (infographic/slide) via NotebookLM.
  */
 async function handleGenerateContent(task: Task): Promise<ExecutionResult> {
   console.log('[SOCIAL HANDLER] Generating content for approval')
@@ -72,18 +74,47 @@ async function handleGenerateContent(task: Task): Promise<ExecutionResult> {
   const platforms: Array<'facebook' | 'instagram' | 'twitter'> = ['facebook', 'instagram', 'twitter']
   const keywords = task.metadata?.keywords || ['audio', 'smart home', 'technology', 'South Africa']
   const targetPlatform = task.metadata?.platform || platforms[new Date().getDay() % platforms.length]
+  const generateVisual = task.metadata?.generate_visual === true
 
+  // Generate post draft (text content + product references)
   const postId = await socialAgent.createPostDraft(
     targetPlatform as any,
     keywords,
     undefined, // scheduledFor — let user approve first
     undefined, // productQuery — let agent pick from catalog
-    false,     // generateVisual
+    generateVisual,
+    generateVisual ? 'infographic' : undefined,
   )
+
+  // Attach product images to media_urls so the post has visuals
+  const supabase = getServerSupabase()
+  const { data: post } = await supabase
+    .from('social_posts')
+    .select('metadata')
+    .eq('id', postId)
+    .single()
+
+  if (post?.metadata?.products_referenced?.length > 0) {
+    const productIds = post.metadata.products_referenced.map((p: any) => p.id)
+    const { data: products } = await supabase
+      .from('products')
+      .select('image_url')
+      .in('id', productIds)
+      .not('image_url', 'is', null)
+
+    const imageUrls = products?.map((p: any) => p.image_url).filter(Boolean) || []
+
+    if (imageUrls.length > 0) {
+      await supabase
+        .from('social_posts')
+        .update({ media_urls: imageUrls })
+        .eq('id', postId)
+    }
+  }
 
   await logToSquadMessages(
     'Social Media Agent',
-    `✅ Generated ${targetPlatform} post draft — awaiting approval in Social Media panel`,
+    `✅ Generated ${targetPlatform} post draft with product images — awaiting approval in Social Media panel`,
     { post_id: postId, platform: targetPlatform }
   )
 
