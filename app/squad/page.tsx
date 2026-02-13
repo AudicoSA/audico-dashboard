@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Users, 
@@ -19,7 +19,8 @@ import {
   Activity,
   BarChart3,
   Target,
-  AlertCircle
+  AlertCircle,
+  ChevronRight
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import VisualContentPanel from './components/VisualContentPanel'
@@ -102,6 +103,7 @@ export default function MissionControl() {
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all')
   const [agentStatuses, setAgentStatuses] = useState<Record<string, any>>({})
   const [triggeringAgent, setTriggeringAgent] = useState<string | null>(null)
+  const taskBoardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchData()
@@ -416,7 +418,7 @@ export default function MissionControl() {
       {/* Approval Queue - Phase 1 & 2 */}
       <ApprovalQueue />
 
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl overflow-hidden">
+      <div ref={taskBoardRef} className="bg-[#1c1c1c] border border-white/5 rounded-2xl overflow-hidden">
         <div className="border-b border-white/5 p-1 flex items-center gap-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('all')}
@@ -567,7 +569,14 @@ export default function MissionControl() {
             {AGENTS.map(agent => {
               const metrics = agentMetrics[agent.id]
               return (
-                <div key={agent.id} className="bg-[#252525] border border-white/5 rounded-xl p-3">
+                <div
+                  key={agent.id}
+                  onClick={() => {
+                    setActiveTab(agent.id)
+                    setTimeout(() => taskBoardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+                  }}
+                  className="bg-[#252525] border border-white/5 rounded-xl p-3 cursor-pointer hover:border-white/20 transition-all group/card"
+                >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <AgentAvatar agent={agent} size="md" />
@@ -589,6 +598,7 @@ export default function MissionControl() {
                         <p className="text-gray-500">Cost</p>
                         <p className="text-yellow-400 font-medium">${metrics.cost_total.toFixed(2)}</p>
                       </div>
+                      <ChevronRight size={16} className="text-gray-600 group-hover/card:text-white transition-colors" />
                     </div>
                   </div>
                   <div className="w-full bg-white/5 rounded-full h-2">
