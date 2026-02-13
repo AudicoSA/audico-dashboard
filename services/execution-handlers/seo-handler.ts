@@ -304,8 +304,38 @@ export async function seoHandler(task: Task): Promise<ExecutionResult> {
         }
       }
 
-      default:
-        return { success: false, error: `Unknown SEO action: ${action}` }
+      default: {
+        // Infer action from task title if metadata.action is missing
+        const title = task.title.toLowerCase()
+        if (title.includes('full audit') || title.includes('seo audit') || title.includes('critically low')) {
+          const baseUrl = process.env.OPENCART_BASE_URL || 'https://audicoonline.co.za'
+          const [productsResult, schemaResult] = await Promise.all([
+            auditProductsSEO(productIds, limit),
+            auditSchemaCompliance(productIds, limit)
+          ])
+          await Promise.all([
+            storeAuditResults(productsResult.audits),
+            storeSchemaAuditResults(schemaResult.audits)
+          ])
+          return {
+            success: true,
+            data: { products: productsResult, schemas: schemaResult },
+            deliverable_url: '/dashboard/seo',
+            tokens_used: 2000
+          }
+        }
+        if (title.includes('schema')) {
+          const schemaResult = await auditSchemaCompliance(productIds, limit)
+          await storeSchemaAuditResults(schemaResult.audits)
+          return {
+            success: true,
+            data: schemaResult,
+            deliverable_url: '/dashboard/seo/schema',
+            tokens_used: 200
+          }
+        }
+        return { success: false, error: `Unknown SEO action: ${action}. Task title: ${task.title}` }
+      }
     }
   } catch (error: any) {
     console.error('[SEO HANDLER] Error:', error)

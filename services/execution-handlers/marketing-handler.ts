@@ -40,27 +40,27 @@ export async function marketingHandler(task: Task): Promise<ExecutionResult> {
 
   try {
     const supabase = getServerSupabase()
-    const taskType = task.metadata?.task_type
+    // Support both metadata.task_type and metadata.action
+    const taskType = task.metadata?.task_type || task.metadata?.action
 
-    if (!taskType) {
-      throw new Error('Missing task_type in task metadata')
-    }
-
-    console.log(`[MARKETING HANDLER] Task type: ${taskType}`)
+    console.log(`[MARKETING HANDLER] Task type: ${taskType || 'inferred from title'}`)
 
     let result
 
-    switch (taskType) {
-      case 'send_newsletter':
+    if (taskType === 'send_newsletter') {
+      result = await handleNewsletterSend(task)
+    } else if (taskType === 'influencer_outreach') {
+      result = await handleInfluencerOutreach(task)
+    } else {
+      // Infer from task title
+      const title = task.title.toLowerCase()
+      if (title.includes('newsletter')) {
         result = await handleNewsletterSend(task)
-        break
-
-      case 'influencer_outreach':
+      } else if (title.includes('influencer') || title.includes('outreach')) {
         result = await handleInfluencerOutreach(task)
-        break
-
-      default:
-        throw new Error(`Unsupported task type: ${taskType}`)
+      } else {
+        throw new Error(`Unknown marketing task type: ${taskType}. Title: ${task.title}`)
+      }
     }
 
     return result

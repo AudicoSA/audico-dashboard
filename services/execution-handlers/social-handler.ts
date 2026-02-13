@@ -1,12 +1,14 @@
 /**
  * Social Media Agent Execution Handler
  *
- * Handles social media publishing tasks for the Social Media Agent.
- * Phase 3: Full implementation with multi-platform support.
+ * Handles social media tasks:
+ * - generate_content: Creates draft posts via AI for approval
+ * - publish: Publishes approved posts to platforms
  */
 
 import type { Task } from '@/types/squad'
 import { publishToTwitter, publishToFacebook, publishToInstagram } from '@/services/integrations/social-publisher'
+import { socialAgent } from '@/services/agents/social-agent'
 import { getServerSupabase } from '@/lib/supabase'
 import { logToSquadMessages } from '@/lib/logger'
 
@@ -19,81 +21,38 @@ interface ExecutionResult {
 }
 
 /**
- * Execute social media publishing task
+ * Execute social media task based on action type
  */
 export async function socialPublishHandler(task: Task): Promise<ExecutionResult> {
   console.log('[SOCIAL HANDLER] Executing task:', task.title)
 
-  if (DRY_RUN) {
-    console.log('[DRY RUN] Would publish social post:', task.metadata)
-    await logToSquadMessages(
-      'Social Media Agent',
-      `[DRY RUN] Would publish post: ${task.title}`,
-      task.metadata
-    )
-    return {
-      success: true,
-      deliverable_url: '/social-posts/dry-run-preview',
-    }
-  }
+  const action = task.metadata?.action || 'publish'
 
   try {
-    const supabase = getServerSupabase()
+    switch (action) {
+      case 'generate_content':
+        return await handleGenerateContent(task)
 
-    // Get post metadata
-    const postId = task.metadata?.post_id
-    const platform = task.metadata?.platform
-
-    if (!postId || !platform) {
-      throw new Error('Missing post_id or platform in task metadata')
-    }
-
-    console.log(`[SOCIAL HANDLER] Publishing to ${platform}:`, postId)
-
-    let result
-
-    // Publish to appropriate platform
-    switch (platform.toLowerCase()) {
-      case 'twitter':
-      case 'x':
-        result = await publishToTwitter(postId)
-        break
-
-      case 'facebook':
-        result = await publishToFacebook(postId)
-        break
-
-      case 'instagram':
-        result = await publishToInstagram(postId)
-        break
+      case 'publish':
+        return await handlePublish(task)
 
       default:
-        throw new Error(`Unsupported platform: ${platform}`)
-    }
-
-    // Log success
-    await logToSquadMessages(
-      'Social Media Agent',
-      `✅ Post published to ${platform}: ${result.platform_url}`,
-      {
-        post_id: postId,
-        platform,
-        platform_post_id: result.platform_post_id,
-        platform_url: result.platform_url
-      }
-    )
-
-    return {
-      success: true,
-      deliverable_url: result.platform_url || `/social-posts/${postId}`
+        // Default: try to infer intent from task title
+        const title = task.title.toLowerCase()
+        if (title.includes('generate') || title.includes('create') || title.includes('content') || title.includes('silent')) {
+          return await handleGenerateContent(task)
+        }
+        if (title.includes('publish') || title.includes('post')) {
+          return await handlePublish(task)
+        }
+        return await handleGenerateContent(task)
     }
   } catch (error: any) {
     console.error('[SOCIAL HANDLER] Error:', error)
 
-    // Log error to squad messages
     await logToSquadMessages(
       'Social Media Agent',
-      `❌ Failed to publish post: ${error.message}`,
+      `❌ Failed: ${error.message}`,
       { task_id: task.id, error: error.message }
     )
 
@@ -101,5 +60,85 @@ export async function socialPublishHandler(task: Task): Promise<ExecutionResult>
       success: false,
       error: error.message
     }
+  }
+}
+
+/**
+ * Generate social media content drafts for approval
+ */
+async function handleGenerateContent(task: Task): Promise<ExecutionResult> {
+  console.log('[SOCIAL HANDLER] Generating content for approval')
+
+  const platforms: Array<'facebook' | 'instagram' | 'twitter'> = ['facebook', 'instagram', 'twitter']
+  const keywords = task.metadata?.keywords || ['audio', 'smart home', 'technology', 'South Africa']
+  const targetPlatform = task.metadata?.platform || platforms[new Date().getDay() % platforms.length]
+
+  const postId = await socialAgent.createPostDraft(
+    targetPlatform as any,
+    keywords,
+    undefined, // scheduledFor — let user approve first
+    undefined, // productQuery — let agent pick from catalog
+    false,     // generateVisual
+  )
+
+  await logToSquadMessages(
+    'Social Media Agent',
+    `✅ Generated ${targetPlatform} post draft — awaiting approval in Social Media panel`,
+    { post_id: postId, platform: targetPlatform }
+  )
+
+  return {
+    success: true,
+    deliverable_url: `/squad?tab=social-media-agent`
+  }
+}
+
+/**
+ * Publish an approved post to its platform
+ */
+async function handlePublish(task: Task): Promise<ExecutionResult> {
+  const postId = task.metadata?.post_id
+  const platform = task.metadata?.platform
+
+  if (!postId || !platform) {
+    throw new Error('Missing post_id or platform in task metadata — cannot publish without both')
+  }
+
+  console.log(`[SOCIAL HANDLER] Publishing to ${platform}:`, postId)
+
+  let result
+
+  switch (platform.toLowerCase()) {
+    case 'twitter':
+    case 'x':
+      result = await publishToTwitter(postId)
+      break
+
+    case 'facebook':
+      result = await publishToFacebook(postId)
+      break
+
+    case 'instagram':
+      result = await publishToInstagram(postId)
+      break
+
+    default:
+      throw new Error(`Unsupported platform: ${platform}`)
+  }
+
+  await logToSquadMessages(
+    'Social Media Agent',
+    `✅ Post published to ${platform}: ${result.platform_url}`,
+    {
+      post_id: postId,
+      platform,
+      platform_post_id: result.platform_post_id,
+      platform_url: result.platform_url
+    }
+  )
+
+  return {
+    success: true,
+    deliverable_url: result.platform_url || `/social-posts/${postId}`
   }
 }

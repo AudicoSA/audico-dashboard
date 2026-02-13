@@ -540,22 +540,27 @@ async function handleOrchestrate() {
 **Your Squad (excluding Email Agent which handles emails automatically):**
 
 **Social Media Agent** — Creates AI-powered social media posts for Facebook, Instagram, Twitter
+  ACTIONS: generate_content, publish
   TRIGGER CONDITIONS:
-  • No post in 2+ days → Create task: "Generate and schedule social media posts"
-  • 0 posts in last 7 days → Create URGENT task: "Social media has gone silent — generate content immediately"
+  • No post in 2+ days → Create task with metadata: { "action": "generate_content", "platform": "facebook" }
+  • 0 posts in last 7 days → Create URGENT task with metadata: { "action": "generate_content" }
+  METADATA FORMAT: { "action": "generate_content" | "publish", "platform": "facebook" | "instagram" | "twitter", "keywords": ["optional", "keywords"] }
 
 **SEO Agent** — Comprehensive SEO optimization for OpenCart products
-  CAPABILITIES: audit_products, audit_schema, generate_schema, check_vitals, analyze_geo, apply_fixes, full_audit
+  ACTIONS: audit_products, audit_schema, generate_schema, check_vitals, analyze_geo, apply_fixes, full_audit
   TRIGGER CONDITIONS:
-  • No audit in 30+ days → Create task: "Run full SEO audit"
-  • Products without Schema.org (>0) → Create task: "Generate schema for untagged products"
-  • SEO score below 60 → Create HIGH priority task: "SEO score critically low — run audit and apply fixes"
+  • No audit in 30+ days → metadata: { "action": "full_audit" }
+  • Products without Schema.org (>0) → metadata: { "action": "generate_schema" }
+  • SEO score below 60 → metadata: { "action": "full_audit" }
+  METADATA FORMAT: { "action": "full_audit" | "audit_products" | "audit_schema" | "generate_schema" | "check_vitals" | "apply_fixes", "limit": 50 }
 
 **Marketing Agent** — Processes reseller applications, manages newsletters, tracks influencers
+  ACTIONS: send_newsletter, influencer_outreach
   TRIGGER CONDITIONS:
-  • Pending reseller applications (>0) → Create task for EACH: "Process reseller application for [company]"
-  • No newsletter in 14+ days → Create task: "Generate newsletter draft"
-  • Un-contacted influencers (>0) → Create task: "Send influencer outreach"
+  • No newsletter in 14+ days → metadata: { "task_type": "send_newsletter" }
+  • Un-contacted influencers (>0) → metadata: { "task_type": "influencer_outreach" }
+  METADATA FORMAT: { "task_type": "send_newsletter" | "influencer_outreach" }
+  NOTE: Reseller applications are handled in the Marketing panel UI — do NOT create tasks for them.
 
 **Supplier Intel Agent** — Manages supplier relationships, tracks response patterns, intelligence gathering
 
@@ -585,7 +590,7 @@ Respond with JSON:
       "assigned_agent": "Social Media Agent" | "SEO Agent" | "Marketing Agent",
       "priority": "low" | "medium" | "high" | "urgent",
       "mentions_kenny": false,
-      "metadata": { "action": "relevant_action_name" }
+      "metadata": { "action": "the_exact_action_name_from_agent_ACTIONS_list" }
     }
   ],
   "decisions": [
