@@ -393,7 +393,7 @@ async function handleOrchestrate() {
         .is('flag_done', false)
         .order('order_no', { ascending: false })
         .limit(10),
-      supabase.from('squad_tasks').select('*').in('status', ['new', 'in_progress']),
+      supabase.from('squad_tasks').select('*').in('status', ['new', 'in_progress', 'completed']).gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
       gatherQuoteWorkflowData(),
       supabase
         .from('social_posts')
@@ -522,11 +522,12 @@ async function handleOrchestrate() {
       // Orders (existing)
       pending_orders: pendingOrders,
 
-      // Active tasks (prevent duplicates)
-      active_tasks: existingTasks.data?.map((t: any) => ({
+      // Tasks from last 24h (active + recently completed — prevent duplicates)
+      recent_tasks: existingTasks.data?.map((t: any) => ({
         title: t.title,
         assigned_to: t.assigned_agent,
         status: t.status,
+        created_at: t.created_at,
       })) || [],
 
       // Quote workflow intelligence
@@ -603,7 +604,7 @@ Respond with JSON:
 - Do NOT create any email-related tasks (those are handled automatically)
 - Do NOT create tasks for Google Ads Agent (not implemented)
 - Only create tasks that are actionable and specific
-- Don't duplicate active tasks listed above
+- CRITICAL: The recent_tasks list includes tasks from the last 24 hours (including completed ones). Do NOT create a task if a similar one already exists in recent_tasks — even if its status is "completed". This prevents wasteful duplicate task creation.
 - If nothing needs attention, return empty arrays
 - Include metadata.action so the task executor knows what handler to call
 - Log significant decisions (prioritization, escalations, auto-approval recommendations)

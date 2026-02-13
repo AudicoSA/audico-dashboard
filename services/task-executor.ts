@@ -90,6 +90,18 @@ export async function executeTask(task: Task): Promise<ExecutionResult> {
 
   console.log(`[EXECUTING] Task ${task.id}: ${task.title}`)
 
+  // DRY_RUN: skip execution entirely — leave task as 'new' so it doesn't
+  // get marked 'completed' and trick Jarvis into creating duplicates
+  if (DRY_RUN) {
+    console.log(`[DRY RUN] Skipping task ${task.id}: ${task.title}`)
+    await logToSquadMessages(
+      'Task Executor',
+      `[DRY RUN] Skipped: ${task.title} — set AGENT_DRY_RUN=false to enable real execution`,
+      { task_id: task.id, agent: task.assigned_agent }
+    )
+    return { success: false, error: 'DRY_RUN mode — task not executed' }
+  }
+
   // Update task to in_progress
   await updateTaskStatus(task.id, 'in_progress', {
     last_execution_attempt: new Date().toISOString()
