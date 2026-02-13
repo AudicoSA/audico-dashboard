@@ -16,7 +16,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON social_accounts TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON seo_audits TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON seo_schema_audits TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON seo_vitals TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON seo_geo_results TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON seo_geo_analysis TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ad_campaigns TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON influencer_opportunities TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON outreach_tracking TO anon;
@@ -66,11 +66,11 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- SEO GEO results
+-- SEO GEO analysis
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon full access to seo_geo_results') THEN
-    CREATE POLICY "Allow anon full access to seo_geo_results"
-      ON seo_geo_results FOR ALL TO anon USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon full access to seo_geo_analysis') THEN
+    CREATE POLICY "Allow anon full access to seo_geo_analysis"
+      ON seo_geo_analysis FOR ALL TO anon USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
