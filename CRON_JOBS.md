@@ -144,6 +144,49 @@ The multi-agent system uses Vercel Cron Jobs to automate various tasks. Each cro
 }
 ```
 
+### 6. Supplier Learning Analysis
+
+**Endpoint**: `GET /api/cron/supplier-learning/analyze`  
+**Schedule**: `0 6 * * 1` (Weekly on Mondays at 6 AM UTC)  
+**Max Duration**: 300 seconds
+
+**Description**: Comprehensive supplier pattern learning from email interactions.
+
+**What it does**:
+- Analyzes response time patterns and preferred contact methods
+- Tracks pricing trends from successful quotes
+- Measures stock reliability accuracy
+- Calculates supplier response quality scores
+- Identifies emerging supplier relationships
+- Generates category-specific supplier insights
+- Updates supplier_products.avg_markup_percentage from successful quotes
+- Integrates findings into SupplierAgent ranking algorithm
+
+**Analysis Windows**:
+- Response patterns: Last 90 days
+- Pricing trends: Last 60 days
+- Stock reliability: Last 90 days
+- Quality scores: Last 90 days
+- Emerging relationships: Last 60 days (30-day comparison)
+- Markup updates: Last 30 days
+
+**Response**:
+```json
+{
+  "success": true,
+  "timestamp": "2024-01-15T06:00:00Z",
+  "response_patterns_analyzed": 45,
+  "pricing_trends_identified": 12,
+  "stock_reliability_updated": 78,
+  "quality_scores_updated": 45,
+  "emerging_relationships": 3,
+  "category_insights_generated": 8,
+  "supplier_products_updated": 56
+}
+```
+
+**See**: `lib/SUPPLIER_LEARNING_ENGINE.md` for detailed documentation
+
 ## Authentication
 
 All cron endpoints require the `CRON_SECRET` environment variable:
