@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS quote_workflow_executions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   workflow_id TEXT NOT NULL UNIQUE,
   email_log_id TEXT,
-  quote_request_id TEXT,
+  quote_request_id UUID,
   workflow_type TEXT NOT NULL DEFAULT 'quote_automation' CHECK (workflow_type IN ('quote_automation', 'manual_quote', 'approval', 'follow_up')),
   status TEXT NOT NULL DEFAULT 'initializing' CHECK (status IN (
     'initializing', 
