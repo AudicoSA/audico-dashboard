@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { gmailService } from '../integrations/gmail-service'
+import { supplierLearningEngine } from '@/lib/supplier-learning-engine'
 
 interface QuoteRequestItem {
   product_name: string
@@ -241,7 +242,7 @@ export class SupplierAgent {
         .order('preferred_contact', { ascending: false })
         .limit(1)
 
-      const score = this.calculateSupplierScore(data.supplier, data.products)
+      const score = await this.calculateSupplierScore(data.supplier, data.products)
 
       rankedSuppliers.push({
         supplier: data.supplier,
@@ -264,19 +265,56 @@ export class SupplierAgent {
     return keywords.length > 0 ? keywords : [productName.toLowerCase()]
   }
 
-  private calculateSupplierScore(supplier: Supplier, products: SupplierProduct[]): number {
+  private async calculateSupplierScore(supplier: Supplier, products: SupplierProduct[]): Promise<number> {
     let score = 0
 
+    // Base reliability score (30%)
     const reliabilityScore = supplier.reliability_score || 50
-    score += reliabilityScore * 0.4
+    score += reliabilityScore * 0.3
 
+    // Relationship strength (20%)
     const relationshipStrength = supplier.relationship_strength || 50
-    score += relationshipStrength * 0.3
+    score += relationshipStrength * 0.2
 
+    // Stock reliability from products (20%)
     const stockReliabilityScore = this.getAverageStockReliability(products)
-    score += stockReliabilityScore * 0.3
+    score += stockReliabilityScore * 0.2
 
-    return score
+    // Get enhanced ranking data from learning engine (30%)
+    try {
+      const enhancedData = await supplierLearningEngine.getEnhancedSupplierRanking(supplier.id)
+      
+      if (enhancedData) {
+        // Response quality score (15%)
+        const qualityScore = enhancedData.response_quality_score || 75
+        score += qualityScore * 0.15
+
+        // Stock accuracy rate (10%)
+        const stockAccuracy = enhancedData.stock_accuracy_rate || 75
+        score += stockAccuracy * 0.10
+
+        // Bonus for emerging relationships (5%)
+        if (enhancedData.interaction_trend === 'increasing') {
+          score += 5
+        }
+
+        // Penalty for decreasing pricing (adjust within the 5% bonus range)
+        if (enhancedData.pricing_trend === 'increasing') {
+          score -= 3
+        }
+      } else {
+        // If no enhanced data, use baseline scores
+        score += 75 * 0.15 // Default quality
+        score += 75 * 0.10 // Default stock accuracy
+      }
+    } catch (error) {
+      console.error('Error getting enhanced supplier ranking:', error)
+      // Fallback to baseline
+      score += 75 * 0.15
+      score += 75 * 0.10
+    }
+
+    return Math.min(100, Math.max(0, score))
   }
 
   private getAverageStockReliability(products: SupplierProduct[]): number {

@@ -607,3 +607,87 @@ export type EmailSupplierInteraction = {
   extracted_at: string
   created_at: string
 }
+
+export type PredictiveQuoteOpportunity = {
+  id: string
+  customer_email: string
+  customer_name: string | null
+  predicted_products: Array<{
+    product_name: string
+    category: string
+    confidence: number
+    reasoning: string
+  }>
+  confidence_score: number
+  trigger_reason: 'repeat_purchase_due' | 'seasonal_opportunity' | 'product_interest_detected' | 'competitor_mention'
+  suggested_discount: number
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  status: 'new' | 'review_pending' | 'quote_generated' | 'contacted' | 'converted' | 'dismissed'
+  metadata: {
+    last_purchase_date: string | null
+    avg_order_value: number
+    purchase_frequency_days: number | null
+    interaction_signals: string[]
+    seasonal_factors: any[]
+    competitor_mentions: string[]
+    next_expected_purchase: string | null
+  }
+  identified_at: string
+  actioned_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type QuoteWorkflowExecution = {
+  id: string
+  workflow_id: string
+  email_log_id: string | null
+  quote_request_id: string | null
+  workflow_type: 'quote_automation' | 'manual_quote' | 'approval' | 'follow_up'
+  status: 'initializing' | 'detecting' | 'supplier_contacted' | 'awaiting_responses' | 'generating_quote' | 'pending_approval' | 'quote_sent' | 'failed' | 'completed' | 'stuck' | 'recovering'
+  steps: Array<{
+    step: string
+    status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+    started_at: string
+    completed_at: string | null
+    duration_seconds: number | null
+    error: string | null
+    metadata: any
+  }>
+  current_step: string | null
+  started_at: string
+  completed_at: string | null
+  total_duration_seconds: number | null
+  detection_duration: number | null
+  supplier_contact_duration: number | null
+  response_wait_duration: number | null
+  quote_generation_duration: number | null
+  approval_duration: number | null
+  send_duration: number | null
+  suppliers_contacted: number
+  suppliers_responded: number
+  response_rate: number | null
+  failure_reason: string | null
+  failure_step: string | null
+  failure_count: number
+  last_error: string | null
+  error_stack: any[]
+  bottleneck_detected: boolean
+  bottleneck_step: string | null
+  bottleneck_duration: number | null
+  bottleneck_threshold_exceeded_by: number | null
+  recovery_attempted: boolean
+  recovery_actions: any[]
+  recovery_successful: boolean | null
+  diagnostic_results: any
+  suggested_fixes: string[]
+  alert_triggered: boolean
+  alert_type: string | null
+  alert_sent_at: string | null
+  alert_resolved_at: string | null
+  circuit_breaker_triggered: boolean
+  circuit_breaker_service: string | null
+  metadata: any
+  created_at: string
+  updated_at: string
+}
