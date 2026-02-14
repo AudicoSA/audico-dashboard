@@ -262,6 +262,11 @@ export default function AlignmentPage() {
                                             <span className="text-xs font-bold text-emerald-400">R {product.price}</span>
                                         </div>
                                         <h3 className="text-sm font-medium line-clamp-2">{product.name}</h3>
+                                        {product.supplier && (
+                                            <div className="mt-1 text-xs text-blue-400 font-medium">
+                                                {product.supplier}
+                                            </div>
+                                        )}
                                         <div className="mt-2 text-xs text-slate-500 flex items-center">
                                             <Search className="w-3 h-3 mr-1" />
                                             Click to analyze matches
