@@ -32,12 +32,17 @@ interface HealthData {
 export default function SystemHealthWidget() {
   const [health, setHealth] = useState<HealthData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [endpointAvailable, setEndpointAvailable] = useState(true)
 
   useEffect(() => {
     fetchHealth()
-    const interval = setInterval(fetchHealth, 30000)
+    const interval = setInterval(() => {
+      if (endpointAvailable) {
+        fetchHealth()
+      }
+    }, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [endpointAvailable])
 
   async function fetchHealth() {
     try {
@@ -45,12 +50,23 @@ export default function SystemHealthWidget() {
       if (response.ok) {
         const data = await response.json()
         setHealth(data)
+      } else if (response.status === 404) {
+        // Endpoint not implemented yet - stop polling and hide widget
+        setEndpointAvailable(false)
+        setLoading(false)
+        return
       }
     } catch (error) {
-      console.error('Failed to fetch health:', error)
+      // Silently handle network errors - health endpoint is optional
+      setEndpointAvailable(false)
     } finally {
       setLoading(false)
     }
+  }
+
+  // Don't render if endpoint is not available
+  if (!endpointAvailable && !loading) {
+    return null
   }
 
   if (loading) {
@@ -65,14 +81,7 @@ export default function SystemHealthWidget() {
   }
 
   if (!health) {
-    return (
-      <div className="bg-[#1c1c1c] border border-white/5 rounded-2xl p-6">
-        <div className="flex items-center gap-2 text-red-400">
-          <AlertCircle size={20} />
-          <span className="text-sm">Failed to load health data</span>
-        </div>
-      </div>
-    )
+    return null
   }
 
   const uptimeValue = parseFloat(health.summary.uptime)
