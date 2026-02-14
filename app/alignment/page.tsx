@@ -128,7 +128,7 @@ export default function AlignmentPage() {
 
         if (confirm(`Link '${selectedProduct.name}' to '${candidate.product.name}'?`)) {
             try {
-                await fetch(`${API_URL}/api/alignment/link`, {
+                const res = await fetch(`${API_URL}/api/alignment/link`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -139,12 +139,20 @@ export default function AlignmentPage() {
                     })
                 })
 
-                // Remove from list
+                if (!res.ok) {
+                    const error = await res.json()
+                    throw new Error(error.detail || 'Failed to link product')
+                }
+
+                const data = await res.json()
+                console.log('Link successful:', data)
+
+                // Remove from list only if successful
                 setUnmatched(prev => prev.filter(p => p.id !== selectedProduct.id))
                 setSelectedProduct(null)
                 setCandidates([])
             } catch (error) {
-                alert('Failed to link product')
+                alert('Failed to link product: ' + (error instanceof Error ? error.message : 'Unknown error'))
                 console.error(error)
             }
         }
@@ -155,7 +163,7 @@ export default function AlignmentPage() {
 
         if (confirm(`Ignore '${selectedProduct.name}'? You won't see it again.`)) {
             try {
-                await fetch(`${API_URL}/api/alignment/ignore`, {
+                const res = await fetch(`${API_URL}/api/alignment/ignore`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -163,12 +171,20 @@ export default function AlignmentPage() {
                     })
                 })
 
-                // Remove from list
+                if (!res.ok) {
+                    const error = await res.json()
+                    throw new Error(error.detail || 'Failed to ignore product')
+                }
+
+                const data = await res.json()
+                console.log('Ignore successful:', data)
+
+                // Remove from list only if successful
                 setUnmatched(prev => prev.filter(p => p.id !== selectedProduct.id))
                 setSelectedProduct(null)
                 setCandidates([])
             } catch (error) {
-                alert('Failed to ignore product')
+                alert('Failed to ignore product: ' + (error instanceof Error ? error.message : 'Unknown error'))
                 console.error(error)
             }
         }
