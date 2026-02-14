@@ -338,15 +338,49 @@ async function handleClassify() {
       if (!classifiedIds.has(emailLog.id)) continue
 
       try {
-        await detectQuoteRequest({
+        const quoteResult = await detectQuoteRequest({
           id: emailLog.id,
           gmail_message_id: emailLog.gmail_message_id,
           from_email: emailLog.from_email,
           subject: emailLog.subject,
           body: emailLog.payload?.body || '',
         })
-      } catch (err) {
+
+        // LOG RESULTS TO SQUAD_MESSAGES (so we can see what's happening!)
+        if (quoteResult.isQuoteRequest) {
+          await logToSquadMessages(
+            'Email Agent',
+            `🎯 Quote request detected: "${emailLog.subject}" (${Math.round(quoteResult.confidenceScore * 100)}% confidence)`,
+            {
+              email_id: emailLog.id,
+              quote_request_id: quoteResult.quoteRequestId,
+              task_id: quoteResult.taskId,
+              confidence: quoteResult.confidenceScore,
+            }
+          )
+        } else {
+          // Log even when NOT a quote (so we know the detector ran)
+          await logToSquadMessages(
+            'Email Agent',
+            `📧 Not a quote request: "${emailLog.subject}" (${Math.round(quoteResult.confidenceScore * 100)}% confidence)`,
+            {
+              email_id: emailLog.id,
+              confidence: quoteResult.confidenceScore,
+            }
+          )
+        }
+      } catch (err: any) {
         console.error('Quote detection failed (non-fatal):', err)
+        // LOG ERRORS TO SQUAD_MESSAGES
+        await logToSquadMessages(
+          'Email Agent',
+          `❌ Quote detection error for "${emailLog.subject}": ${err.message}`,
+          {
+            email_id: emailLog.id,
+            error: err.message,
+            stack: err.stack?.substring(0, 500),
+          }
+        )
       }
 
       try {
