@@ -90,6 +90,12 @@ export default function AlignmentPage() {
     }
 
     const handleSelectProduct = async (product: SupplierProduct) => {
+        // Prevent duplicate calls for the same product
+        if (selectedProduct?.id === product.id && !analyzing) {
+            console.log('Already analyzing this product, skipping duplicate call')
+            return
+        }
+
         setSelectedProduct(product)
         setAnalyzing(true)
         setCandidates([])
@@ -98,7 +104,18 @@ export default function AlignmentPage() {
             // Assume API endpoint is /api/alignment/candidates/{internal_id}
             const res = await fetch(`${API_URL}/api/alignment/candidates/${product.id}`)
             const data = await res.json()
-            setCandidates(data)
+
+            // Deduplicate candidates by product_id
+            const uniqueCandidates = data.reduce((acc: Candidate[], curr: Candidate) => {
+                const exists = acc.find(c => c.product.product_id === curr.product.product_id)
+                if (!exists) {
+                    acc.push(curr)
+                }
+                return acc
+            }, [])
+
+            console.log(`Fetched ${data.length} candidates, showing ${uniqueCandidates.length} unique`)
+            setCandidates(uniqueCandidates)
         } catch (error) {
             console.error("Failed to fetch candidates", error)
         } finally {
@@ -234,7 +251,6 @@ export default function AlignmentPage() {
                                 {unmatched.map(product => (
                                     <motion.div
                                         key={product.id}
-                                        layoutId={`product-${product.id}`}
                                         onClick={() => handleSelectProduct(product)}
                                         className={`p-4 rounded-xl cursor-pointer transition-all border ${selectedProduct?.id === product.id
                                             ? 'bg-blue-600/20 border-blue-500/50 shadow-lg shadow-blue-900/20'
