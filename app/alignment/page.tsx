@@ -232,6 +232,46 @@ export default function AlignmentPage() {
         }
     }
 
+    const handleManualLink = async () => {
+        if (!selectedProduct) return
+
+        const opencartUrl = prompt(
+            `Manual Link\n\nPaste the OpenCart product URL or product ID:`,
+            'https://www.audicoonline.co.za/...'
+        )
+
+        if (opencartUrl && opencartUrl.trim()) {
+            try {
+                const res = await fetch(`${API_URL}/api/alignment/link-manual`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        internal_product_id: selectedProduct.id,
+                        opencart_url_or_id: opencartUrl.trim()
+                    })
+                })
+
+                if (!res.ok) {
+                    const error = await res.json()
+                    throw new Error(error.detail || 'Failed to create manual link')
+                }
+
+                const data = await res.json()
+                console.log('Manual link successful:', data)
+
+                alert(`Successfully linked to OpenCart product!`)
+
+                // Remove from list
+                setUnmatched(prev => prev.filter(p => p.id !== selectedProduct.id))
+                setSelectedProduct(null)
+                setCandidates([])
+            } catch (error) {
+                alert('Failed to create manual link: ' + (error instanceof Error ? error.message : 'Unknown error'))
+                console.error(error)
+            }
+        }
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 text-white">
             <div className="max-w-7xl mx-auto">
@@ -321,6 +361,16 @@ export default function AlignmentPage() {
                                                 <span className="text-lg font-bold text-emerald-400">R {selectedProduct.price}</span>
                                             </div>
                                         </div>
+
+                                        {/* Manual Link Button */}
+                                        <button
+                                            onClick={handleManualLink}
+                                            title="Manually link to OpenCart product by URL"
+                                            className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/30 text-purple-400 border border-purple-500/20 rounded-lg text-xs font-bold transition-all flex items-center"
+                                        >
+                                            <Link2 className="w-3 h-3 mr-1" />
+                                            Manual Link
+                                        </button>
 
                                         {/* Ignore Button */}
                                         <button
