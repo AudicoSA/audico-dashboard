@@ -66,6 +66,8 @@ export default function OrdersPage() {
 
       console.log('Updating order:', orderId, 'with data:', updateData)
 
+      updateData.last_modified_by = 'dashboard'
+
       const { error, data } = await supabase
         .from('orders_tracker')
         .update(updateData)
@@ -109,7 +111,7 @@ export default function OrdersPage() {
     try {
       const { error } = await supabase
         .from('orders_tracker')
-        .update({ [field]: !currentValue })
+        .update({ [field]: !currentValue, last_modified_by: 'dashboard' })
         .eq('order_no', orderId)
 
       if (error) throw error
