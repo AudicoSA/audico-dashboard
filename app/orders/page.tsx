@@ -273,7 +273,7 @@ export default function OrdersPage() {
               </thead>
               <tbody className="divide-y divide-white/5 text-gray-300">
                 {orders
-                  .filter(order => (showCompleted || (!order.flag_done && order.supplier_status !== 'Complete')) && !['Cancelled', 'Missing'].includes(order.supplier_status || ''))
+                  .filter(order => (showCompleted || (!order.flag_done && order.supplier_status !== 'Complete')) && !['Cancelled', 'Missing', 'Refunded'].includes(order.supplier_status || ''))
                   .map((order, idx) => (
                     <tr key={order.order_no} className={`hover:bg-white/5 transition-colors ${idx % 2 === 0 ? 'bg-transparent' : 'bg-white/[0.02]'}`}>
                       <td className="p-2 font-mono text-gray-500">{order.order_no}</td>
@@ -303,8 +303,17 @@ export default function OrdersPage() {
                         <EditableCell order={order} field="supplier_amount" value={order.supplier_amount ? `R${order.supplier_amount.toFixed(0)}` : null} type="number" />
                       </td>
                       <td className="p-2">
-                        <div className={`truncate px-1.5 py-0.5 rounded text-[10px] inline-block ${order.supplier_status === 'Shipped' ? 'bg-green-500/20 text-green-400' :
-                          order.supplier_status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-white/10 text-gray-400'
+                        <div className={`truncate px-1.5 py-0.5 rounded text-[10px] inline-block ${
+                          order.supplier_status === 'Shipped' ? 'bg-green-500/20 text-green-400' :
+                          order.supplier_status === 'Complete' ? 'bg-green-500/20 text-green-400' :
+                          order.supplier_status === 'Processing' ? 'bg-blue-500/20 text-blue-400' :
+                          order.supplier_status === 'Paid' ? 'bg-blue-500/20 text-blue-400' :
+                          order.supplier_status === 'Processed' ? 'bg-blue-500/20 text-blue-400' :
+                          order.supplier_status === 'Awaiting Payment' ? 'bg-orange-500/20 text-orange-400' :
+                          order.supplier_status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                          order.supplier_status === 'Drafted' ? 'bg-purple-500/20 text-purple-400' :
+                          order.supplier_status === 'Supplier Ordered' ? 'bg-cyan-500/20 text-cyan-400' :
+                          'bg-white/10 text-gray-400'
                           }`}>
                           <EditableCell order={order} field="supplier_status" value={order.supplier_status} />
                         </div>
