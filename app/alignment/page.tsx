@@ -350,7 +350,7 @@ export default function AlignmentPage() {
                                             <h2 className="text-xl font-bold text-white mt-1">{selectedProduct.name}</h2>
 
                                             {/* Description Display */}
-                                            {selectedProduct.description && (
+                                            {selectedProduct.description && typeof selectedProduct.description === 'string' && (
                                                 <p className="text-sm text-slate-400 mt-2 line-clamp-3 bg-black/20 p-2 rounded border border-white/5">
                                                     {selectedProduct.description}
                                                 </p>
