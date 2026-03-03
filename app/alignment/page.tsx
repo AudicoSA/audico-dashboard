@@ -61,6 +61,23 @@ export default function AlignmentPage() {
         }
     }
 
+    const pollAutoLinkStatus = async (): Promise<{ status: string; message?: string; aligned?: number; error?: string }> => {
+        const maxAttempts = 120; // 2 minutes max
+        for (let i = 0; i < maxAttempts; i++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                const res = await fetch(`${API_URL}/api/alignment/auto-link-status`);
+                const data = await res.json();
+                if (!data.running && data.last_result) {
+                    return data.last_result;
+                }
+            } catch (e) {
+                console.error('Status poll error:', e);
+            }
+        }
+        return { status: 'timeout', message: 'Auto-alignment is still running. Check back later.' };
+    }
+
     const handleAutoAlign = async () => {
         if (!confirm(`Are you sure you want to run Auto-Alignment?\n\nThis will scan unmatched products and AUTOMATICALLY LINK any that have a 100% Exact Match.\n\nThis cannot be undone easily.`)) {
             return;
@@ -77,7 +94,18 @@ export default function AlignmentPage() {
 
             if (data.status === 'success') {
                 alert(`Auto-Alignment Complete!\n\n${data.message}`);
-                fetchUnmatched(); // Refresh list
+                fetchUnmatched();
+            } else if (data.status === 'started') {
+                // Background task started — poll for completion
+                const result = await pollAutoLinkStatus();
+                if (result.status === 'success') {
+                    alert(`Auto-Alignment Complete!\n\n${result.message}`);
+                    fetchUnmatched();
+                } else if (result.status === 'timeout') {
+                    alert(result.message!);
+                } else {
+                    alert('Auto-Alignment failed: ' + (result.error || result.message || 'Unknown error'));
+                }
             } else {
                 alert('Auto-Alignment reported an issue: ' + (data.detail || JSON.stringify(data)));
             }
