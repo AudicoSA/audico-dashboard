@@ -79,7 +79,7 @@ export default function AlignmentPage() {
     }
 
     const handleAutoAlign = async () => {
-        if (!confirm(`Are you sure you want to run Auto-Alignment?\n\nThis will scan unmatched products and AUTOMATICALLY LINK any that have a 100% Exact Match.\n\nThis cannot be undone easily.`)) {
+        if (!confirm(`Are you sure you want to run Auto-Alignment?\n\nThis will scan unmatched products and automatically link any with 95%+ confidence match.\n\nThis cannot be undone easily.`)) {
             return;
         }
 
@@ -88,7 +88,7 @@ export default function AlignmentPage() {
             const res = await fetch(`${API_URL}/api/alignment/auto-link`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ confidence_threshold: 100 })
+                body: JSON.stringify({ confidence_threshold: 95 })
             });
             const data = await res.json();
 
